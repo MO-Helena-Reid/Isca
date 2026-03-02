@@ -18,6 +18,16 @@ atmos_param/cloud_simple/marine_strat_cloud.F90
 atmos_param/cloud_simple/cloud_cover_diags.F90
 atmos_param/cloud_simple/cloud_spookie.F90
 atmos_param/two_stream_gray_rad/two_stream_gray_rad.F90
+atmos_param/papillon/papillon_alg_mod.f90
+atmos_param/papillon/simplex_noise_mod.f90
+atmos_param/papillon/papillon_config_mod.f90
+atmos_param/papillon/ml_constants_mod.f90
+atmos_param/papillon/neural_net_mod.f90
+atmos_param/papillon/normalisation_mod.f90
+atmos_param/papillon/plausible_alternative_mod.f90
+atmos_param/papillon/sample_multivariate_normal_mod.f90
+atmos_param/papillon/spline_interp_mod.f90
+atmos_param/papillon/thetasds00v001_mod.f90
 atmos_param/qflux/qflux.f90
 atmos_param/monin_obukhov/monin_obukhov_interfaces.h
 atmos_param/monin_obukhov/monin_obukhov_kernel.F90

@@ -62,6 +62,8 @@ use  field_manager_mod, only: MODEL_ATMOS
 
 use rayleigh_bottom_drag_mod, only: rayleigh_bottom_drag_init, compute_rayleigh_bottom_drag
 
+use papillon_alg_mod, only: compute_t_pert
+
 #ifdef RRTM_NO_COMPILE
     ! RRTM_NO_COMPILE not included
 #else
@@ -125,6 +127,9 @@ logical :: two_stream_gray = .true.
 logical :: do_rrtm_radiation = .false.
 logical :: do_socrates_radiation = .false.
 
+! Papillon stochastic physics scheme options
+logical :: do_papillon=.false.
+
 ! MiMA uses damping
 logical :: do_damping = .false.
 
@@ -164,7 +169,8 @@ namelist / idealized_moist_phys_nml / turb, lwet_convection, do_bm, do_ras, roug
                                       gp_surface, convection_scheme,                 &
                                       bucket, init_bucket_depth, init_bucket_depth_land, &
                                       max_bucket_depth_land, robert_bucket, raw_bucket, &
-                                      do_socrates_radiation, do_lcl_diffusivity_depth
+                                      do_socrates_radiation, do_lcl_diffusivity_depth, &
+                                      do_papillon
 
 
 integer, parameter :: num_time_levels = 2 ! Add bucket - number of time levels added to allow timestepping in this module
@@ -296,7 +302,9 @@ integer ::           &
      id_u_10m,       & ! used for 10m winds and 2m temp
      id_v_10m,       & ! used for 10m winds and 2m temp
      id_q_2m,        & ! used for 2m specific humidity
-     id_rh_2m          ! used for 2m relative humidity
+     id_rh_2m,         & ! used for 2m relative humidity
+     id_papillon_noise,& ! papillon stochastic physics scheme noise field
+     id_papillon_t_pert  ! papillon stochastic physics scheme temperature perturbation
 
 integer, allocatable, dimension(:,:) :: convflag ! indicates which qe convection subroutines are used
 real,    allocatable, dimension(:,:) :: rad_lat, rad_lon
@@ -691,6 +699,17 @@ if(bucket) then
        axes(1:2), Time, 'Tendency of bucket depth induced by LH', 'm/s')
 endif
 
+if (do_papillon) then
+  id_papillon_noise = register_diag_field( mod_name, &
+    'papillon_noise', axes(1:3),Time, &
+    'Noise field for the PAPILLON stochastic scheme',&
+    'no units')
+  id_papillon_t_pert = register_diag_field( mod_name, &
+    'papillon_t_pert', axes(1:3),Time, &
+    'Temperature perturbation from PAPILLON stochastic scheme',&
+    'K')
+endif
+
 id_temp_2m = register_diag_field(mod_name, 'temp_2m',            &
      axes(1:2), Time, 'Air temperature 2m above surface', 'K')
 id_u_10m = register_diag_field(mod_name, 'u_10m',                &
@@ -828,8 +847,9 @@ real, dimension(:,:,:),     intent(inout) :: dt_ug, dt_vg, dt_tg
 real, dimension(:,:,:,:),   intent(inout) :: dt_tracers
 
 real :: delta_t
-real, dimension(size(ug,1), size(ug,2), size(ug,3)) :: tg_tmp, qg_tmp, RH,tg_interp, mc, dt_ug_conv, dt_vg_conv
-
+real, dimension(size(ug,1), size(ug,2), size(ug,3)) :: tg_tmp, qg_tmp, RH,tg_interp, mc, dt_ug_conv, dt_vg_conv,&
+        papillon_t_pert,papillon_noise
+real,dimension(size(ug,1),size(ug,2)) :: sd_orog
 ! Simple cloud scheme variabilies to pass to radiation
 real, dimension(size(ug,1), size(ug,2), size(ug,3))    :: cf_rad, reff_rad, qcl_rad, cca_rad
 
@@ -854,6 +874,13 @@ endif
 rain = 0.0; snow = 0.0; precip = 0.0; klcls = 0
 convective_rain = 0.0
 
+!---call PAPILLON stochastic physics scheme to perturb t but just write pert to diagnostic for now
+   if (do_papillon) then
+      sd_orog(:,:) = 0.0
+      CALL compute_t_pert(papillon_noise,papillon_t_pert,tg(:,:,:,previous),p_full(:,:,:,previous),grid_tracers(:,:,:,previous,nsphum),z_full(:,:,:,previous),rad_lat,rad_lon,fracland,z_surf,sd_orog,Time)
+      if (id_papillon_noise > 0) used = send_data(id_papillon_noise, papillon_noise, Time)
+      if (id_papillon_t_pert > 0) used = send_data(id_papillon_t_pert, papillon_t_pert, Time)
+   endif
 
 select case(r_conv_scheme)
 

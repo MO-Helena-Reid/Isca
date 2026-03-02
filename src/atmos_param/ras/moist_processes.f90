@@ -69,7 +69,7 @@ use atmos_tracer_utilities_mod, only : wet_deposition
 use            fms_mod, only : mpp_clock_id, mpp_clock_begin, &
                                mpp_clock_end, CLOCK_MODULE, &
                                MPP_CLOCK_SYNC
-
+use papillon_alg_mod, only: compute_t_pert
 !use apparent, only :
 ! start chemistry modules
 !use    chem_interface, only : id_wet
@@ -108,7 +108,7 @@ private
               do_donner_deep=.false., do_cmt=.false., &
               use_tau=.false., do_gust_cv = .false., &
               do_bm=.false., do_bmmass=.false., do_bmomp=.false.,do_sbms=.false., &
-              use_df_stuff=.false.
+              use_df_stuff=.false.,do_papillon=.false.
 
 
    real :: pdepth = 150.e2
@@ -164,6 +164,7 @@ private
 !                [logical, default: do_bmomp=false ]
 !   use_df_stuff = switch to turn on alternative definition of specific humidity.
 !               When true, specific humidity = (rdgas/rvgas)*esat/pressure
+!   do_papillon = switch to turn on/off papillon stochastic physics scheme
 !
 !   notes: 1) do_lsc and do_strat cannot both be true
 !          2) pdepth and tfreeze are used to determine liquid vs. solid
@@ -181,7 +182,8 @@ namelist /moist_processes_nml/ do_mca, do_lsc, do_ras, do_strat,  &
                                use_tau, do_rh_clouds, do_diag_clouds, &
                                do_donner_deep, do_cmt, do_gust_cv, &
                                gustmax, gustconst, &
-                               do_bm, do_bmmass, do_bmomp,do_sbms, use_df_stuff
+                               do_bm, do_bmmass, do_bmomp,do_sbms, use_df_stuff,&
+                               do_papillon
 
 !-----------------------------------------------------------------------
 !-------------------- diagnostics fields -------------------------------
@@ -200,7 +202,8 @@ integer :: id_tdt_conv, id_qdt_conv, id_prec_conv,id_snow_conv, &
            id_prod_no, id_cape, id_cin,  id_tref, id_qref, id_rhsurf, &
            id_bmflag, id_klzbs, id_invtaubmt, id_invtaubmq, &
            id_capeflag, id_massflux, id_entrop_ls,&
-	   			 id_invtau_q_relax,id_invtau_t_relax
+	   			 id_invtau_q_relax,id_invtau_t_relax,id_papillon_noise,&
+           id_papillon_t_pert
  
 integer, dimension(:), allocatable :: id_tracerdt_conv,  &
                                       id_tracerdt_conv_col, &
@@ -235,7 +238,7 @@ subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
                             t, q, r, u, v, tm, qm, rm, um, vm,         &
                             tdt, qdt, rdt, udt, vdt, diff_cu_mo,       &
                             convect, lprec, fprec, gust_cv, area,      &
-                            lat, mask, kbot)
+                            lat, lon, orog, sd_orog, mask, kbot)
 !-----------------------------------------------------------------------
 !
 !    in:  is,ie      starting and ending i indices for window
@@ -295,6 +298,15 @@ subroutine moist_processes (is, ie, js, je, Time, dt, land,            &
 !
 !         lat        latitude in radians
 !                      [real, dimension(nlon,nlat)]
+!         
+!         lon        longitude in radians
+!                      [real, dimension(nlon,nlat)]
+!
+!         orog       mean orography in grid box [m]
+!                      [real, dimension(nlon,nlat)]
+!
+!         sd_orog    standard deviation of orography in grid box [m]
+!                      [real, dimension(nlon,nlat)]
 !  
 ! inout:  tdt, qdt   temperature (tdt) [deg k/sec] and specific
 !                    humidity of water vapor (qdt) tendency [1/sec]
@@ -343,8 +355,7 @@ logical, intent(out), dimension(:,:)     :: convect
    real, intent(out), dimension(:,:)     :: lprec, fprec, gust_cv
    real, intent(out), dimension(:,:,:)   :: diff_cu_mo
    real, intent(in) , dimension(:,:)     :: area
-   real, intent(in) , dimension(:,:)     :: lat
-
+   real, intent(in) , dimension(:,:)     :: lat, lon, orog, sd_orog
    real, intent(in) , dimension(:,:,:), optional :: mask
 integer, intent(in) , dimension(:,:),   optional :: kbot
 
@@ -358,7 +369,7 @@ real, dimension(size(t,1),size(t,2),size(t,3)) :: tin,qin,ttnd,qtnd, &
                  rltnd, ritnd, rin, rtnd, ahuco, qrat, entrop_ls, &
 		 ttnd_save,qtnd_save, qitnd_save, qltnd_save, qatnd_save,&
 		 utnd,vtnd,uin,vin, qltnd,qitnd,qatnd, qlin, qiin, qain,  mc_full, mc_donner, massflux,&
-	    	 RH, pmass, wetdeptnd, q_ref, t_ref,tempdiag1
+	    	 RH, pmass, wetdeptnd, q_ref, t_ref,tempdiag1,tpert,papillon_noise
 
 logical,dimension(size(t,1),size(t,2))           :: coldT
 real, dimension(size(r,1),size(r,2),size(r,3),size(r,4)):: tracer, tracertnd
@@ -480,6 +491,16 @@ real, dimension(size(t,1),size(t,2)) :: convprc
    qrat = 1.0
    ahuco = 0.0
 
+!---call PAPILLON stochastic physics scheme to perturb t but just write pert to diagnostic for now
+   if (do_papillon) then  
+      CALL compute_t_pert(papillon_noise,tpert,tin,pfull,qin,lat,lon,land,orog,sd_orog,is,ie,js,je,Time)
+      if (id_papillon_noise > 0) then
+        used = send_data (id_papillon_noise, papillon_noise, Time, is, js, 1, rmask=mask)
+      endif
+      if (id_papillon_t_pert > 0) then
+        used = send_data (id_papillon_t_pert, tpert, Time, is, js, 1, rmask=mask)
+      endif
+   endif
 !---compute mass in each layer if needed by any of the diagnostics ----- 
 
       alpha = any (id_tracerdt_conv_col > 0)
@@ -2441,7 +2462,17 @@ subroutine diag_field_init ( axes, Time )
   integer   :: n, nn
 
 !------------ initializes diagnostic fields in this module -------------
-
+if (do_papillon) then
+  id_papillon_noise = register_diag_field( mod_name, &
+    'papillon_noise', axes(1:3),Time, &
+    'Noise field for the PAPILLON stochastic scheme',&
+    'no units', missing_value=missing_value              )
+  id_papillon_t_pert = register_diag_field( mod_name, &
+    'papillon_t_pert', axes(1:3),Time, &
+    'Temperature perturbation from PAPILLON stochastic scheme',&
+    'K', missing_value=missing_value                     )
+endif
+  
 if ( any((/do_bm,do_bmmass,do_bmomp,do_sbms/)) ) then
    id_qref = register_diag_field ( mod_name, &
      'qref', axes(1:3), Time, &
