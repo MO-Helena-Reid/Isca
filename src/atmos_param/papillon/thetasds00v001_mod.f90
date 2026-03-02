@@ -10,33 +10,34 @@ IMPLICIT NONE
 CONTAINS
 SUBROUTINE thetasds00v001(inputs, y_stddevs)
 USE neural_net_mod, ONLY: dense
+USE ml_constants_mod, ONLY: r_ml
 IMPLICIT NONE
-REAL(KIND=4) :: inputs(213)
+REAL(KIND=r_ml) :: inputs(213)
 
 
-REAL(KIND=4) :: w_dense1(213, 512)
-REAL(KIND=4) :: b_dense1(512)
-REAL(KIND=4) :: y_dense1(512)
+REAL(KIND=r_ml) :: w_dense1(213, 512)
+REAL(KIND=r_ml) :: b_dense1(512)
+REAL(KIND=r_ml) :: y_dense1(512)
 
 
-REAL(KIND=4) :: w_dense2(512, 512)
-REAL(KIND=4) :: b_dense2(512)
-REAL(KIND=4) :: y_dense2(512)
+REAL(KIND=r_ml) :: w_dense2(512, 512)
+REAL(KIND=r_ml) :: b_dense2(512)
+REAL(KIND=r_ml) :: y_dense2(512)
 
 
-REAL(KIND=4) :: w_dense3(512, 512)
-REAL(KIND=4) :: b_dense3(512)
-REAL(KIND=4) :: y_dense3(512)
+REAL(KIND=r_ml) :: w_dense3(512, 512)
+REAL(KIND=r_ml) :: b_dense3(512)
+REAL(KIND=r_ml) :: y_dense3(512)
 
 
-REAL(KIND=4) :: w_dense4(512, 512)
-REAL(KIND=4) :: b_dense4(512)
-REAL(KIND=4) :: y_dense4(512)
+REAL(KIND=r_ml) :: w_dense4(512, 512)
+REAL(KIND=r_ml) :: b_dense4(512)
+REAL(KIND=r_ml) :: y_dense4(512)
 
 
-REAL(KIND=4) :: w_stddevs(512, 70)
-REAL(KIND=4) :: b_stddevs(70)
-REAL(KIND=4) :: y_stddevs(70)
+REAL(KIND=r_ml) :: w_stddevs(512, 70)
+REAL(KIND=r_ml) :: b_stddevs(70)
+REAL(KIND=r_ml) :: y_stddevs(70)
 
 
 

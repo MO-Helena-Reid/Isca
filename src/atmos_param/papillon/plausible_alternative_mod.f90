@@ -3,10 +3,9 @@
 module plausible_alternative_mod
 use ml_constants_mod, only: r_um, r_ml, ml_nlev, ml_output_len, ml_input_len
 use papillon_config_mod, only: sampling_method, sampling_method_correlated, &
-        sampling_method_uncorrelated, sampling_method_multivariate, &
+        sampling_method_uncorrelated, &
         sampling_method_development, sampling_method_constant, &
         constant_t_sd_profile
-use log_mod, only: log_event, LOG_LEVEL_ERROR, log_scratch_space
 implicit none
 contains
 subroutine get_alternative_temperature(inputs, noise, temperature, alt_temperature)
@@ -57,10 +56,6 @@ subroutine get_alternative_temperature(inputs, noise, temperature, alt_temperatu
             call sample_independent_normal(temperature, t_std, alt_temperature)
         case (sampling_method_development)
             call sample_from_snoise(noise, temperature, t_std, alt_temperature)
-        case (sampling_method_multivariate)
-            write(log_scratch_space, &
-                    '(A)') "Not implemented error, no multivariate normal sampling yet with PAPILLON."
-            call log_event(log_scratch_space, LOG_LEVEL_ERROR)
     end select
 end subroutine get_alternative_temperature
 end module plausible_alternative_mod

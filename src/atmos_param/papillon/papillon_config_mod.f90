@@ -3,14 +3,13 @@ module papillon_config_mod
     implicit none
     private
     public :: sampling_method, sampling_method_correlated, &
-        sampling_method_uncorrelated, sampling_method_multivariate, &
+        sampling_method_uncorrelated, &
         sampling_method_development, sampling_method_constant, &
         constant_t_sd_profile
     integer, parameter :: sampling_method_correlated = 1
     integer, parameter :: sampling_method_uncorrelated = 2
-    integer, parameter :: sampling_method_multivariate = 3
-    integer, parameter :: sampling_method_development = 4
-    integer, parameter :: sampling_method_constant = 5
+    integer, parameter :: sampling_method_development = 3
+    integer, parameter :: sampling_method_constant = 4
     integer, parameter :: sampling_method = sampling_method_development
     real, parameter, dimension(ml_nlev) :: constant_t_sd_profile = [&
                             7.474816271768951470e-01,&

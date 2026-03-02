@@ -28,6 +28,7 @@ atmos_param/papillon/plausible_alternative_mod.f90
 atmos_param/papillon/sample_multivariate_normal_mod.f90
 atmos_param/papillon/spline_interp_mod.f90
 atmos_param/papillon/thetasds00v001_mod.f90
+atmos_param/papillon/fill_covariance_matrix_mod.f90
 atmos_param/qflux/qflux.f90
 atmos_param/monin_obukhov/monin_obukhov_interfaces.h
 atmos_param/monin_obukhov/monin_obukhov_kernel.F90
