@@ -1,9 +1,16 @@
-! *****************************COPYRIGHT*******************************
-! (C) Crown copyright Met Office. All rights reserved.
-! For further details please refer to the file COPYRIGHT.txt
-! which you should have received as part of this distribution.
-! *****************************COPYRIGHT*******************************
-
+!-----------------------------------------------------------------------------
+! Crown Copyright (c) Met Office. All rights reserved.
+! The file LICENCE, distributed with this code, contains details of the terms
+! under which the code may be used.
+!-----------------------------------------------------------------------------
+! This file was written by Helena Reid
+! as part of the initial release of the 
+! PAPILLON stochastic physics scheme,
+! under the BSD 3-clause license,
+! which should have been provided with this file.
+!
+! A description of the scheme may be found in preprint here:
+! https://doi.org/10.5194/egusphere-2025-6312
 module sample_multivariate_normal_mod
 use ml_constants_mod, only: r_ml, r_um
 
@@ -112,12 +119,11 @@ subroutine sample_independent_normal(mean, stds, output_vector)
     end do
 end subroutine sample_independent_normal
 
-subroutine sample_from_snoise(noise, mean, stds, output_vector)
-    ! Makes output_vector from noise with the specified mean and standard deviations.
+subroutine sample_from_snoise(noise, stds, output_vector)
+  ! Makes output_vector from noise with the specified standard deviation, mean of 0.
     implicit none
     ! arguments
     real(kind=r_um), dimension(:), intent(in) :: noise
-    real(kind=r_um), dimension(:), intent(in) :: mean
     real(kind=r_ml), dimension(:), intent(in) :: stds
     real(kind=r_um), dimension(:), intent(out) :: output_vector
     ! locals
@@ -125,8 +131,9 @@ subroutine sample_from_snoise(noise, mean, stds, output_vector)
     real(kind=r_um), parameter :: one_over_sd_snoise = 1.0_r_um/0.30210421270734245_r_um
     do i = 1, size(output_vector)
         ! divide by the standard deviation of simplex noise to get something with sd of 1,
-        ! then multiply by the desired standard deviation and add the mean.
-        output_vector(i) = one_over_sd_snoise*noise(i)*real(stds(i), r_um) + mean(i)
+        ! then multiply by the desired standard deviation. The mean should be added but is here
+        ! zero.
+        output_vector(i) = one_over_sd_snoise*noise(i)*real(stds(i), r_um)
     end do
 end subroutine sample_from_snoise
 

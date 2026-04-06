@@ -1,9 +1,12 @@
-! *****************************COPYRIGHT*******************************
-! (C) Crown copyright Met Office. All rights reserved.
-! For further details please refer to the file COPYRIGHT.txt
-! which you should have received as part of this distribution.
-! *****************************COPYRIGHT*******************************
-
+!!-----------------------------------------------------------------------------
+! Crown Copyright (c) Met Office. All rights reserved.
+! The file LICENCE, distributed with this code, contains details of the terms
+! under which the code may be used.
+!-----------------------------------------------------------------------------
+! This file was distributed as part of ENNUF,
+! a tool for translating machine learning models written in python
+! to Fortran, initially developed at the UK Met Office and available
+! here: https://github.com/MetOffice/ennuf
 MODULE neural_net_mod
 ! Contains subroutines for 1d dense layers, plus layers common in CNNs:
 ! pooling1d, conv1d, pixelshuffle1d, skip connection, dense3d (which takes and returns 3d inputs but is otherwise

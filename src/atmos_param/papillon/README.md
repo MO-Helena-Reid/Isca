@@ -1,0 +1,31 @@
+# PAPILLON
+
+This directory includes the PAPILLON stochastic physics scheme.
+
+This scheme perturbs the input temperature to parametrisation scheme(s) using
+simplex noise modulated by a neural network's estimation of subgrid
+variance of temperature, such that gridboxes that are expected to
+be more heterogeneous receive greater stochastic perturbations.
+The neural network component may be switched off and replaced with
+a constant profile of standard deviation of temperature that was computed by
+spatial and temporal averaging of the data used to fit the neural network's
+parameters.
+
+A more detailed description of the scheme may be found in preprint here:
+https://doi.org/10.5194/egusphere-2025-6312
+
+## `papillon_nml` namelist options
+
+- `sampling_method` the method by which random samples are drawn.
+    - If set to `1` (constant), the perturbations are simplex noise multiplied by a fixed
+profile of standard deviation of temperature (see `papillon_config_mod.f90`).
+    - If set to `2` (development), the perturbations are simplex noise multiplied by the
+output of a neural network that estimates subgrid variability in temperature.
+
+- `time_scale_factor` sets the characteristic length scale of the noise in the time dimension.
+- `radius_scale_factor` the planetary radius is multiplied by this to get the inner radius of the spherical shell that the atmosphere forms within the noise field.
+- `height_scale_factor` the height above the surface plus the orography is multiplied by this and added to the inner radius to get the rest of the shell up to its outer radius.
+- `lat_scale_factor`,`lon_scale_factor` currently unused.
+- `noise_scale_factor` perturbations are multiplied by this number, so changing this can have a huge effect on the behaviour of the scheme. Values which are too high may cause the model to crash, too low and the scheme will be effectively switched off.
+- `noise_centre_x`,`noise_centre_y`,`noise_centre_z`,`noise_centre_t` centre of planet relative to the 4D simplex noise field. To change the noise, it is preferable to change the random seed than this.
+

@@ -1,9 +1,19 @@
+! This file was translated by Helena Reid
+! as part of the initial release of the 
+! PAPILLON stochastic physics scheme,
+! under the BSD 3-clause license,
+! which should have been provided with this file.
+!
+! A description of the scheme may be found in preprint here:
+! https://doi.org/10.5194/egusphere-2025-6312
+!
+! Implementation of simplex noise in 4d
+! Translated to python then to Fortran 90, adapted from DOI:10.13140/RG.2.1.3369.6488
+ 
 module simplex_noise_mod
     implicit none
     contains
-    ! Implementation of simplex noise in 4d
-    ! Translated to python then to Fortran 90, adapted from DOI:10.13140/RG.2.1.3369.6488
-    function snoise4d(v) result(noise)
+   function snoise4d(v) result(noise)
         implicit none
         real :: noise
         real, dimension(4), intent(in) :: v

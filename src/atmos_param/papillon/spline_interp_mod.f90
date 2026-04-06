@@ -1,12 +1,7 @@
 !> Module for cubic spline interpolation
 !>
-!> Author: Jannis Teunissen
+!> Released into the public domain by Jannis Teunissen
 !>
-!> This code is based on:
-!> 1. spline.f (https://www.netlib.org/fmm/spline.f)
-!> 2. spline.f90 (translation of spline.f, https://ww2.odu.edu/~agodunov/computing/programs/book2/Ch01/spline.f90)
-!>
-!> License: the above two files do not specify a license, so I assume they are in the public domain, as is this code.
 !> https://github.com/jannisteunissen/spline_interpolation_fortran
 module spline_interp_mod
   implicit none
@@ -49,7 +44,7 @@ contains
     real(dp), allocatable       :: b(:), c(:), d(:)
     integer                     :: i, j, lookup_size
     real(dp)                    :: h, x_lookup, min_dx
-
+    !print*,GETPID(),"BEGIN SUBROUTINE spline_set_coeffs"
     if (n < 2) &
          error stop "spline_set_coeffs requires n >= 2"
     if (any(x(2:n) <= x(1:n-1))) &
@@ -59,8 +54,9 @@ contains
     spl%n = n
     spl%x = x
     spl%y = y
-
+    !print*,GETPID(),"allocated and set n x y"
     if (n < 3) then
+     ! print*,GETPID(),"special case n < 3 early exit ahead"
        ! Handle special case by linear interpolation
        b(1) = (y(2)-y(1))/(x(2)-x(1))
        c(1) = 0
@@ -81,7 +77,7 @@ contains
        c(i+1) = (y(i+1) - y(i))/d(i)
        c(i) = c(i+1) - c(i)
     end do
-
+    !print*,GETPID(),"setup tri diagonal system"
     ! end conditions.  third derivatives at  x(1)  and  x(n)
     ! obtained from divided differences
     b(1) = -d(1)
@@ -94,21 +90,21 @@ contains
        c(1) = c(1)*d(1)**2/(x(4)-x(1))
        c(n) = -c(n)*d(n-1)**2/(x(n)-x(n-3))
     end if
-
+    !print*,GETPID(),"obtained third derivatives"
     ! forward elimination
     do i = 2, n
        h = d(i-1)/b(i-1)
        b(i) = b(i) - h*d(i-1)
        c(i) = c(i) - h*c(i-1)
     end do
-
+    !print*,GETPID(),"did forward elimination"
     ! back substitution
     c(n) = c(n)/b(n)
     do j = 1, n-1
        i = n-j
        c(i) = (c(i) - d(i)*c(i+1))/b(i)
     end do
-
+    !print*,GETPID(),"did back substitution"
     ! compute spline coefficients
     b(n) = (y(n) - y(n-1))/d(n-1) + d(n-1)*(c(n-1) + 2*c(n))
     do i = 1, n-1
@@ -118,32 +114,39 @@ contains
     end do
     c(n) = 3*c(n)
     d(n) = d(n-1)
-
+    !print*,GETPID(),"computed spline coefficients"
     spl%bcd(1, :) = b
     spl%bcd(2, :) = c
     spl%bcd(3, :) = d
-
+    !print*,GETPID(),"set spline bcd"
     ! Create linear lookup table to find location between data points more
     ! quickly. First determine good size for the lookup table.
     min_dx      = minval(x(2:n) - x(1:n-1))
     lookup_size = min(4 * n, nint(1 + (x(n) - x(1))/min_dx))
-
+    !print*,GETPID(),"create linear lookup table"
     ! The lookup table will have a regular (linear) spacing
     h = (x(n) - x(1)) / (lookup_size - 1)
     spl%lookup_inv_dx = 1/h
     allocate(spl%lookup_index(lookup_size))
-
+    !print*,GETPID(),"allocate lookup table"
     ! At location z, the table index is i = ceiling((z - x(1)) * inv_dx)
     ! The tabulated points should then be x(spl%lookup_index(i))
     spl%lookup_index(1) = 1
     do i = 2, lookup_size
        x_lookup = x(1) + (i-1) * h
+       if (size(spl%lookup_index)<i-1) then
+         error stop "i-1 exceeded size of spl lookup index"
+       end if
        spl%lookup_index(i) = spl%lookup_index(i-1)
        do while (x_lookup > x(spl%lookup_index(i)+1))
           spl%lookup_index(i) = spl%lookup_index(i) + 1
+          if (size(x)<spl%lookup_index(i)+1) then
+            !print*,GETPID(),"size(x):",size(x),"spl%lookup_index(i)+1",spl%lookup_index(i)+1, "spl lookup index exceeded size of x"
+            exit
+          end if
        end do
     end do
-
+  ! print*,GETPID(),"END SUBROUTINE spline_set_coeffs"
   end subroutine spline_set_coeffs
 
   ! Evaluate the cubic spline interpolation at point u

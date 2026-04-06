@@ -54,6 +54,7 @@ use      damping_driver_mod, only: damping_driver, damping_driver_init, damping_
 
 use    press_and_geopot_mod, only: pressure_variables
 
+use     papillon_config_mod, only: papillon_init
 use         mpp_domains_mod, only: mpp_get_global_domain ! needed for reading in land
 
 use tracer_manager_mod, only: get_number_tracers, query_method
@@ -62,7 +63,7 @@ use  field_manager_mod, only: MODEL_ATMOS
 
 use rayleigh_bottom_drag_mod, only: rayleigh_bottom_drag_init, compute_rayleigh_bottom_drag
 
-use papillon_alg_mod, only: compute_t_pert
+use papillon_alg_mod, only: papillon_alg
 
 #ifdef RRTM_NO_COMPILE
     ! RRTM_NO_COMPILE not included
@@ -383,6 +384,10 @@ if(do_cloud_simple) then
 end if
 if(do_cloud_spookie) then
   call cloud_spookie_init(get_axis_id(), Time)
+end if
+
+if(do_papillon) then
+  call papillon_init(get_axis_id(), Time)
 end if
 
 ! need to make sure that gray radiation and rrtm radiation are not both called.
@@ -839,12 +844,13 @@ subroutine idealized_moist_phys(Time, p_half, p_full, z_half, z_full, ug, vg, ps
                                 previous, current, dt_ug, dt_vg, dt_tg, dt_tracers, mask, kbot)
 
 type(time_type),            intent(in)    :: Time
-real, dimension(:,:,:,:),   intent(in)    :: p_half, p_full, z_half, z_full, ug, vg, tg
+real, dimension(:,:,:,:),   intent(in)    :: p_half, p_full, z_half, z_full, ug, vg
 real, dimension(:,:,:),     intent(in)    :: psg, wg_full
 real, dimension(:,:,:,:,:), intent(in)    :: grid_tracers
 integer,                    intent(in)    :: previous, current
 real, dimension(:,:,:),     intent(inout) :: dt_ug, dt_vg, dt_tg
-real, dimension(:,:,:,:),   intent(inout) :: dt_tracers
+real, dimension(:,:,:,:),   intent(inout) :: dt_tracers, tg 
+! note tg should only be temporarily modified, if PAPILLON is active
 
 real :: delta_t
 real, dimension(size(ug,1), size(ug,2), size(ug,3)) :: tg_tmp, qg_tmp, RH,tg_interp, mc, dt_ug_conv, dt_vg_conv,&
@@ -874,13 +880,18 @@ endif
 rain = 0.0; snow = 0.0; precip = 0.0; klcls = 0
 convective_rain = 0.0
 
-!---call PAPILLON stochastic physics scheme to perturb t but just write pert to diagnostic for now
-   if (do_papillon) then
-      sd_orog(:,:) = 0.0
-      CALL compute_t_pert(papillon_noise,papillon_t_pert,tg(:,:,:,previous),p_full(:,:,:,previous),grid_tracers(:,:,:,previous,nsphum),z_full(:,:,:,previous),rad_lat,rad_lon,fracland,z_surf,sd_orog,Time)
-      if (id_papillon_noise > 0) used = send_data(id_papillon_noise, papillon_noise, Time)
-      if (id_papillon_t_pert > 0) used = send_data(id_papillon_t_pert, papillon_t_pert, Time)
-   endif
+!---call PAPILLON stochastic physics scheme to perturb t
+if (do_papillon) then
+  sd_orog(:,:) = 0.0 ! TODO currently setting sd_orog to 0 rather than passing it through to scheme
+  CALL papillon_alg(papillon_noise,papillon_t_pert,tg(:,:,:,previous),p_full(:,:,:,previous),grid_tracers(:,:,:,previous,nsphum),z_full(:,:,:,previous),rad_lat,rad_lon,fracland,z_surf,sd_orog,Time)
+  
+  ! send papillon diagnostics
+  if (id_papillon_noise > 0) used = send_data(id_papillon_noise, papillon_noise, Time)
+  if (id_papillon_t_pert > 0) used = send_data(id_papillon_t_pert, papillon_t_pert, Time)
+  
+  ! apply perturbation
+  tg(:,:,:,previous) = tg(:,:,:,previous) + papillon_t_pert
+endif
 
 select case(r_conv_scheme)
 
@@ -1027,6 +1038,11 @@ if (r_conv_scheme .ne. DRY_CONV) then
   if(id_precip     > 0) used = send_data(id_precip, precip, Time)
 
 endif
+
+! remove temporarily applied papillon temperature perturbation
+if (do_papillon) then
+  tg(:,:,:,previous) = tg(:,:,:,previous) - papillon_t_pert
+end if
 
 ! Call the simple cloud scheme in line with SPOOKIE-2 requirements
 ! Using start of time step variables
@@ -1418,7 +1434,6 @@ if(bucket) then
 
 endif
 ! end Add bucket section
-
 end subroutine idealized_moist_phys
 !=================================================================================================================================
 subroutine idealized_moist_phys_end

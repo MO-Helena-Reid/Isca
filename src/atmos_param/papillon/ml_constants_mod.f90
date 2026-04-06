@@ -1,5 +1,19 @@
-! Created by  on 17/11/2023.
+!-----------------------------------------------------------------------------
+! Crown Copyright (c) Met Office. All rights reserved.
+! The file LICENCE, distributed with this code, contains details of the terms
+! under which the code may be used.
+!-----------------------------------------------------------------------------
+! This file was written by Helena Reid
+! as part of the initial release of the 
+! PAPILLON stochastic physics scheme,
+! under the BSD 3-clause license,
+! which should have been provided with this file.
+!
+! A description of the scheme may be found in preprint here:
+! https://doi.org/10.5194/egusphere-2025-6312
+!
 
+! Created by Helena Reid on 17/11/2023.
 module ml_constants_mod
     use, intrinsic :: iso_fortran_env, only : int8, int16, int32, int64, &
                                             real32, real64, real128

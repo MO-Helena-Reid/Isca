@@ -1,10 +1,14 @@
-! *****************************COPYRIGHT*******************************
-! (C) Crown copyright Met Office. All rights reserved.
-! For further details please refer to the file COPYRIGHT.txt
-! which you should have received as part of this distribution.
-! *****************************COPYRIGHT*******************************
-
-!  ! Easy Neural Networks in the Um in Fortran: Theta Standard Deviations 00
+!!-----------------------------------------------------------------------------
+! Crown Copyright (c) Met Office. All rights reserved.
+! The file LICENCE, distributed with this code, contains details of the terms
+! under which the code may be used.
+!-----------------------------------------------------------------------------
+! This file was generated automatically by ENNUF,
+! a tool for translating machine learning models written in python
+! to Fortran, initially developed at the UK Met Office and available
+! here: https://github.com/MetOffice/ennuf
+!
+! Easy Neural Networks in the Um in Fortran: Theta Standard Deviations 00
 MODULE thetasds00v001_mod
 IMPLICIT NONE
 CONTAINS
