@@ -20,14 +20,14 @@ use ml_constants_mod, only: ml_nlev, ml_input_len, z_papillon
 use papillon_config_mod, only: planet_radius, time_scale_factor, radius_scale_factor, &
   lat_scale_factor, lon_scale_factor, height_scale_factor, noise_scale_factor, noise_centre_t, noise_centre_x,&
   noise_centre_y, noise_centre_z, sampling_method_constant, sampling_method_development, sampling_method,&
-  constant_t_sd_profile
+  constant_t_sd_profile,output_papillon_diags,id_papillon_noise,id_papillon_t_sd,id_papillon_t_pert,&
+  noise, t_sd
 use thetasds00v001_mod, only: thetasds00v001
 use normalisation_mod, only: normalise_inputs
 use sample_multivariate_normal_mod, only: sample_from_snoise
 implicit none
 contains
 subroutine papillon_alg(&
-  noise,&
   tpert,&
   t,&
   pfull,&
@@ -41,7 +41,7 @@ subroutine papillon_alg(&
   Time)
   use reverse_array_mod, only: reverse
   implicit none
-  real, intent(out), dimension(:,:,:) :: noise,tpert
+  real, intent(out), dimension(:,:,:) :: tpert
   real, intent(in),  dimension(:,:,:) :: t,pfull,q,z_full
   real, intent(in),  dimension(:,:)   :: lat,lon,fracland,orog,sd_orog
   type(time_type), intent(in)         :: Time
@@ -58,9 +58,10 @@ subroutine papillon_alg(&
   type(spline_type)                   :: spline
   real,dimension(ml_nlev)             :: t_papillon, q_papillon, &
                                          p_papillon, tpert_papillon,&
-                                         noise_papillon, t_sd
+                                         noise_papillon, t_sd_papillon
   real,dimension(ml_input_len)        :: inputs, normalised_inputs
-  real,dimension(size(t,3))           :: z_full_r,pfull_r,q_r,t_r,tpert_r,noise_r
+  real,dimension(size(t,3))           :: z_full_r,pfull_r,q_r,t_r,tpert_r
+  
   !print*,GETPID(),"BEGIN SUBROUTINE compute_t_pert"
   !tpert(:,:,:) = 0.0
   !noise(:,:,:) = 0.0
@@ -81,11 +82,14 @@ subroutine papillon_alg(&
         noise_loc(3) = noise_radius*cos_latitudes(i,j) - noise_centre_z
         noise_papillon(k) = noise_scale_factor*snoise4d(noise_loc)
       end do
-      ! TODO: only interpolate noise back to ISCA grid if it is requested as diagnostic
-      call spline_set_coeffs(z_papillon,noise_papillon,ml_nlev,spline)
-      noise_r = spline_evaluate(z_full_r,spline)
-      call reverse(noise_r,noise(i,j,:))
- 
+
+      ! only interpolate noise back to ISCA grid if it is requested as diagnostic
+      if (id_papillon_noise > 0) then
+        call spline_set_coeffs(z_papillon,noise_papillon,ml_nlev,spline)
+        noise(i,j,:) = spline_evaluate(z_full_r,spline)
+        call reverse(noise(i,j,:),noise(i,j,:))
+      end if
+      
       select case (sampling_method)
         case (sampling_method_constant)
           call sample_from_snoise(noise_papillon, constant_t_sd_profile, tpert_papillon)
@@ -109,9 +113,15 @@ subroutine papillon_alg(&
           inputs(213) = 0.0
       !    print*,GETPID(),"set inputs"
           call normalise_inputs(inputs, normalised_inputs)
-          call thetasds00v001(normalised_inputs, t_sd)
+          call thetasds00v001(normalised_inputs, t_sd_papillon)
           ! TODO: does this ml model output sd of theta or t? check
-          call sample_from_snoise(noise_papillon, t_sd, tpert_papillon)
+          call sample_from_snoise(noise_papillon, t_sd_papillon, tpert_papillon)
+
+          if (id_papillon_t_sd > 0) then
+            call spline_set_coeffs(z_papillon, t_sd_papillon, ml_nlev, spline)
+            t_sd(i,j,:) = spline_evaluate(z_full_r,spline)
+            call reverse(t_sd(i,j,:),t_sd(i,j,:))
+          end if
       end select
       !print*,GETPID(),"shape z zr zp t tp tpp",size(z_full(i,j,:)),size(z_full_r),size(z_papillon),size(t_r),size(t_papillon),size(tpert_papillon),"z_full_r",z_full_r,"t_papillon:",t_papillon,"temperature:",t_r,"t+tpert_papillon:",tpert_papillon
     
@@ -136,7 +146,9 @@ subroutine papillon_alg(&
       !print *, GETPID(), "reversed"
     end do
   end do
-      ! call print_time(Time)
-  ! print*, GETPID(), "END SUBROUTINE compute_t_pert"
+  call output_papillon_diags(noise, tpert, t_sd, Time)
+  ! call print_time(Time)
+  ! print*, GETPID(), "tpert min max",MINVAL(tpert),MAXVAL(tpert)
+  ! print*, GETPID(), "temp min max",MINVAL(t+tpert),MAXVAL(t+tpert)
 end subroutine papillon_alg
 end module papillon_alg_mod

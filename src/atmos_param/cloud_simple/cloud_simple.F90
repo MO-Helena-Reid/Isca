@@ -95,7 +95,7 @@ module cloud_simple_mod
     do_init = .false.  !initialisation completed
 
   end subroutine cloud_simple_init
-
+  
   ! ====================== Main Cloud Subroutine ====================== !
   subroutine cloud_simple(p_half, p_full, Time, temp, q_hum, z_full, &
                           wg_full, psg, temp_2m, q_2m, rh_2m, klcls, ocean, &

@@ -704,17 +704,6 @@ if(bucket) then
        axes(1:2), Time, 'Tendency of bucket depth induced by LH', 'm/s')
 endif
 
-if (do_papillon) then
-  id_papillon_noise = register_diag_field( mod_name, &
-    'papillon_noise', axes(1:3),Time, &
-    'Noise field for the PAPILLON stochastic scheme',&
-    'no units')
-  id_papillon_t_pert = register_diag_field( mod_name, &
-    'papillon_t_pert', axes(1:3),Time, &
-    'Temperature perturbation from PAPILLON stochastic scheme',&
-    'K')
-endif
-
 id_temp_2m = register_diag_field(mod_name, 'temp_2m',            &
      axes(1:2), Time, 'Air temperature 2m above surface', 'K')
 id_u_10m = register_diag_field(mod_name, 'u_10m',                &
@@ -840,31 +829,32 @@ endif
 
 end subroutine idealized_moist_phys_init
 !=================================================================================================================================
-subroutine idealized_moist_phys(Time, p_half, p_full, z_half, z_full, ug, vg, psg, wg_full, tg, grid_tracers, &
+subroutine idealized_moist_phys(Time, p_half, p_full, z_half, z_full, ug, vg, psg, wg_full, tg_in, grid_tracers, &
                                 previous, current, dt_ug, dt_vg, dt_tg, dt_tracers, mask, kbot)
 
 type(time_type),            intent(in)    :: Time
-real, dimension(:,:,:,:),   intent(in)    :: p_half, p_full, z_half, z_full, ug, vg
+real, dimension(:,:,:,:),   intent(in)    :: p_half, p_full, z_half, z_full, ug, vg, tg_in
 real, dimension(:,:,:),     intent(in)    :: psg, wg_full
 real, dimension(:,:,:,:,:), intent(in)    :: grid_tracers
 integer,                    intent(in)    :: previous, current
 real, dimension(:,:,:),     intent(inout) :: dt_ug, dt_vg, dt_tg
-real, dimension(:,:,:,:),   intent(inout) :: dt_tracers, tg 
+real, dimension(:,:,:,:),   intent(inout) :: dt_tracers
 ! note tg should only be temporarily modified, if PAPILLON is active
 
 real :: delta_t
 real, dimension(size(ug,1), size(ug,2), size(ug,3)) :: tg_tmp, qg_tmp, RH,tg_interp, mc, dt_ug_conv, dt_vg_conv,&
-        papillon_t_pert,papillon_noise
+        papillon_t_pert
 real,dimension(size(ug,1),size(ug,2)) :: sd_orog
 ! Simple cloud scheme variabilies to pass to radiation
 real, dimension(size(ug,1), size(ug,2), size(ug,3))    :: cf_rad, reff_rad, qcl_rad, cca_rad
-
+real, dimension(size(ug,1),size(ug,2),size(ug,3),size(ug,4)) :: tg
 real, intent(in) , dimension(:,:,:), optional :: mask
 integer, intent(in) , dimension(:,:),   optional :: kbot
 
 real, dimension(1,1,1):: tracer, tracertnd
 integer :: nql, nqi, nqa   ! tracer indices for stratiform clouds
 
+tg(:,:,:,previous) = tg_in(:,:,:,previous)
 if(current == previous) then
    delta_t = dt_real
 else
@@ -883,14 +873,9 @@ convective_rain = 0.0
 !---call PAPILLON stochastic physics scheme to perturb t
 if (do_papillon) then
   sd_orog(:,:) = 0.0 ! TODO currently setting sd_orog to 0 rather than passing it through to scheme
-  CALL papillon_alg(papillon_noise,papillon_t_pert,tg(:,:,:,previous),p_full(:,:,:,previous),grid_tracers(:,:,:,previous,nsphum),z_full(:,:,:,previous),rad_lat,rad_lon,fracland,z_surf,sd_orog,Time)
-  
-  ! send papillon diagnostics
-  if (id_papillon_noise > 0) used = send_data(id_papillon_noise, papillon_noise, Time)
-  if (id_papillon_t_pert > 0) used = send_data(id_papillon_t_pert, papillon_t_pert, Time)
-  
+  CALL papillon_alg(papillon_t_pert,tg(:,:,:,previous),p_full(:,:,:,previous),grid_tracers(:,:,:,previous,nsphum),z_full(:,:,:,previous),rad_lat,rad_lon,fracland,z_surf,sd_orog,Time)
   ! apply perturbation
-  tg(:,:,:,previous) = tg(:,:,:,previous) + papillon_t_pert
+  ! tg(:,:,:,previous) = tg(:,:,:,previous) + papillon_t_pert
 endif
 
 select case(r_conv_scheme)
@@ -1040,9 +1025,9 @@ if (r_conv_scheme .ne. DRY_CONV) then
 endif
 
 ! remove temporarily applied papillon temperature perturbation
-if (do_papillon) then
-  tg(:,:,:,previous) = tg(:,:,:,previous) - papillon_t_pert
-end if
+! if (do_papillon) then
+!   tg(:,:,:,previous) = tg(:,:,:,previous) - papillon_t_pert
+! end if
 
 ! Call the simple cloud scheme in line with SPOOKIE-2 requirements
 ! Using start of time step variables

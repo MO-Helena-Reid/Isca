@@ -19,10 +19,19 @@ use ml_constants_mod, only: ml_nlev
 #else
   use fms_mod,        only: open_namelist_file, close_file
 #endif
-use fms_mod,          only: stdlog, NOTE, error_mesg, &
+use fms_mod,          only: stdlog, NOTE, FATAL, error_mesg, &
                             uppercase, check_nml_error, file_exist
 use time_manager_mod, only: time_type
  
+use diag_manager_mod, only: register_diag_field, send_data
+#ifdef COLUMN_MODEL 
+use              column_mod, only: get_num_levels
+use            spec_mpp_mod, only: get_grid_domain 
+#else
+use          transforms_mod, only: get_grid_domain
+use   spectral_dynamics_mod, only: get_num_levels
+#endif 
+
 implicit none
 private
 public :: sampling_method, sampling_method_correlated, &
@@ -32,7 +41,9 @@ public :: sampling_method, sampling_method_correlated, &
     planet_radius, time_scale_factor, radius_scale_factor,&
     lat_scale_factor,lon_scale_factor,height_scale_factor,&
     noise_scale_factor,noise_centre_t,noise_centre_x,&
-    noise_centre_y,noise_centre_z,papillon_init
+    noise_centre_y,noise_centre_z,papillon_init, output_papillon_diags,&
+    id_papillon_t_sd, id_papillon_noise, id_papillon_t_pert, noise, t_sd
+real, allocatable, dimension(:,:,:) :: noise, t_sd
 integer, parameter :: sampling_method_correlated = 4
 integer, parameter :: sampling_method_uncorrelated = 3
 integer, parameter :: sampling_method_development = 2
@@ -120,7 +131,13 @@ real, parameter, dimension(ml_nlev) :: constant_t_sd_profile = [&
                         3.187616441406314616e-01,&
                         1.366351249509512866e-01,&
                         5.126769960918496627e-02]
-character(len=14), parameter :: mod_name_ppl = "papillon_conf"
+character(len=14), parameter :: mod_name_ppl = "papillon"
+
+! diagnostic IDs
+integer :: id_papillon_noise,& ! papillon stochastic physics scheme noise field
+           id_papillon_t_pert,&! papillon stochastic physics scheme temperature perturbation
+           id_papillon_t_sd    ! papillon stochastic physics scheme predicted temperature variance
+
 namelist /papillon_nml/ &
   sampling_method, time_scale_factor,radius_scale_factor,&
   height_scale_factor,lat_scale_factor,lon_scale_factor,&
@@ -130,7 +147,8 @@ contains
 subroutine papillon_init(axes, Time)
   type(time_type), intent(in)       :: Time
   integer, intent(in), dimension(4) :: axes
-  integer :: io, ierr, nml_unit, stdlog_unit
+  integer :: io, ierr, nml_unit, stdlog_unit,&
+             is,ie,js,je,num_levels
 
 #ifdef INTERNAL_FILE_NML
   read(input_nml_file, nml=papillon_nml, iostat=io)
@@ -150,5 +168,58 @@ subroutine papillon_init(axes, Time)
   write(stdlog_unit, papillon_nml)
 
   call error_mesg(mod_name_ppl, 'Using PAPILLON stochastic physics scheme', NOTE)
+  call error_mesg(mod_name_ppl, ' _____  _______  _____  _____                _____  __   _', NOTE)
+  call error_mesg(mod_name_ppl, '|_____] |_____| |_____]   |   |      |      |     | | \  |', NOTE)
+  call error_mesg(mod_name_ppl, '|       |     | |       __|__ |_____ |_____ |_____| |  \_|', NOTE)
+  id_papillon_noise = register_diag_field( mod_name_ppl, &
+    'papillon_noise', axes(1:3),Time, &
+    'Noise field for the PAPILLON stochastic scheme',&
+    'no units')
+  id_papillon_t_pert = register_diag_field( mod_name_ppl, &
+    'papillon_t_pert', axes(1:3),Time, &
+    'Temperature perturbation from PAPILLON stochastic scheme',&
+    'K')
+  id_papillon_t_sd = register_diag_field( mod_name_ppl, &
+    'papillon_t_sd', axes(1:3),Time, &
+    'Predicted subgrid standard deviation of temperature by PAPILLON stochastic scheme',&
+    'K')
+  if (id_papillon_t_sd > 0 .and. sampling_method == sampling_method_constant) then
+    call error_mesg(mod_name_ppl, &
+      'May not request papillon_t_sd as diagnostic when sampling method uses constant profile of t_sd. Change the value of sampling_method or remove the request for this diagnostic.',&
+      FATAL)
+  end if
+  call get_grid_domain(is, ie, js, je)
+  call get_num_levels(num_levels)
+
+  if (id_papillon_noise > 0) allocate(noise(is:ie,js:je,num_levels))
+  if (id_papillon_t_sd > 0) allocate(t_sd(is:ie,js:je,num_levels))
+
+     !
+     !         ...                        
+     !        ......                      
+     !       ........                     
+     !      ..........                    
+     !      ..........                    
+     !    ............ .                  
+     !   ............: :                  
+     !  .::::::::::::=+=.                 
+     ! ::::--------=*=-::.........        
+     !        -- = =-:::.............     
+     !             --:::..............    
+     !             --:::............      
+     !             --::::...              
+     !             -:::::..               
+     !              -:                    
+     !              :                     
+     !
 end subroutine papillon_init
+
+subroutine output_papillon_diags(noise_, t_pert, t_sd_, Time)
+  real, intent(in), dimension(:,:,:) :: noise_, t_pert, t_sd_
+  type(time_type), intent(in) :: Time
+  logical used
+  if (id_papillon_noise > 0) used = send_data(id_papillon_noise, noise_, Time)
+  if (id_papillon_t_pert > 0) used = send_data(id_papillon_t_pert, t_pert, Time)
+  if (id_papillon_t_sd > 0) used = send_data(id_papillon_t_sd, t_sd_, Time)
+end subroutine output_papillon_diags
 end module papillon_config_mod
