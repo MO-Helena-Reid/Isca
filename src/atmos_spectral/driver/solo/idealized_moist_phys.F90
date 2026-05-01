@@ -875,7 +875,7 @@ if (do_papillon) then
   sd_orog(:,:) = 0.0 ! TODO currently setting sd_orog to 0 rather than passing it through to scheme
   CALL papillon_alg(papillon_t_pert,tg(:,:,:,previous),p_full(:,:,:,previous),grid_tracers(:,:,:,previous,nsphum),z_full(:,:,:,previous),rad_lat,rad_lon,fracland,z_surf,sd_orog,Time)
   ! apply perturbation
-  ! tg(:,:,:,previous) = tg(:,:,:,previous) + papillon_t_pert
+  tg(:,:,:,previous) = tg(:,:,:,previous) + papillon_t_pert
 endif
 
 select case(r_conv_scheme)
@@ -1025,9 +1025,9 @@ if (r_conv_scheme .ne. DRY_CONV) then
 endif
 
 ! remove temporarily applied papillon temperature perturbation
-! if (do_papillon) then
-!   tg(:,:,:,previous) = tg(:,:,:,previous) - papillon_t_pert
-! end if
+if (do_papillon) then
+  tg(:,:,:,previous) = tg(:,:,:,previous) - papillon_t_pert
+end if
 
 ! Call the simple cloud scheme in line with SPOOKIE-2 requirements
 ! Using start of time step variables
