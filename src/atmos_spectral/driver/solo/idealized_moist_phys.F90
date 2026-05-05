@@ -839,7 +839,6 @@ real, dimension(:,:,:,:,:), intent(in)    :: grid_tracers
 integer,                    intent(in)    :: previous, current
 real, dimension(:,:,:),     intent(inout) :: dt_ug, dt_vg, dt_tg
 real, dimension(:,:,:,:),   intent(inout) :: dt_tracers
-! note tg should only be temporarily modified, if PAPILLON is active
 
 real :: delta_t
 real, dimension(size(ug,1), size(ug,2), size(ug,3)) :: tg_tmp, qg_tmp, RH,tg_interp, mc, dt_ug_conv, dt_vg_conv,&
@@ -874,6 +873,10 @@ convective_rain = 0.0
 if (do_papillon) then
   sd_orog(:,:) = 0.0 ! TODO currently setting sd_orog to 0 rather than passing it through to scheme
   CALL papillon_alg(papillon_t_pert,tg(:,:,:,previous),p_full(:,:,:,previous),grid_tracers(:,:,:,previous,nsphum),z_full(:,:,:,previous),rad_lat,rad_lon,fracland,z_surf,sd_orog,Time)
+  if (any(papillon_t_pert /= 0.0)) then
+    print*, "nonzero papillon t pert detected"
+    call exit(2)
+  endif
   ! apply perturbation
   tg(:,:,:,previous) = tg(:,:,:,previous) + papillon_t_pert
 endif
