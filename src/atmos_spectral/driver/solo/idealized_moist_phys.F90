@@ -875,7 +875,8 @@ if (do_papillon) then
   CALL papillon_alg(papillon_t_pert,tg(:,:,:,previous),p_full(:,:,:,previous),grid_tracers(:,:,:,previous,nsphum),z_full(:,:,:,previous),rad_lat,rad_lon,fracland,z_surf,sd_orog,Time)
   if (any(papillon_t_pert /= 0.0)) then
     print*, "nonzero papillon t pert detected"
-    call exit(2)
+    print*, "max:", maxval(papillon_t_pert)
+    print*, "min:", minval(papillon_t_pert)
   endif
   ! apply perturbation
   tg(:,:,:,previous) = tg(:,:,:,previous) + papillon_t_pert
