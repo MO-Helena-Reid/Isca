@@ -20,8 +20,7 @@ use ml_constants_mod, only: ml_nlev, ml_input_len, z_papillon
 use papillon_config_mod, only: planet_radius, time_scale_factor, radius_scale_factor, &
   lat_scale_factor, lon_scale_factor, height_scale_factor, noise_scale_factor, noise_centre_t, noise_centre_x,&
   noise_centre_y, noise_centre_z, sampling_method_constant, sampling_method_development, sampling_method,&
-  constant_t_sd_profile,output_papillon_diags,id_papillon_noise,id_papillon_t_sd,id_papillon_t_pert,&
-  noise, t_sd
+  constant_t_sd_profile,output_papillon_diags,id_papillon_noise,id_papillon_t_sd,id_papillon_t_pert
 use thetasds00v001_mod, only: thetasds00v001
 use normalisation_mod, only: normalise_inputs
 use sample_multivariate_normal_mod, only: sample_from_snoise
@@ -53,6 +52,7 @@ subroutine papillon_alg(&
   real,dimension(size(t,1),size(t,2)) :: cos_latitudes
   real,dimension(size(t,1),size(t,2)) :: sin_longitudes
   real,dimension(size(t,1),size(t,2)) :: cos_longitudes
+  real,dimension(size(t,1),size(t,2),size(t,3)) :: noise, t_sd
   real                                :: noise_radius
   integer                             :: i,j,k
   type(spline_type)                   :: spline
@@ -80,7 +80,8 @@ subroutine papillon_alg(&
         noise_loc(1) = noise_radius*sin_latitudes(i,j)*cos_longitudes(i,j) - noise_centre_x
         noise_loc(2) = noise_radius*sin_latitudes(i,j)*sin_longitudes(i,j) - noise_centre_y
         noise_loc(3) = noise_radius*cos_latitudes(i,j) - noise_centre_z
-        noise_papillon(k) = noise_scale_factor*snoise4d(noise_loc)
+        ! noise_papillon(k) = noise_scale_factor*snoise4d(noise_loc)
+        noise_papillon(k) = snoise4d(noise_loc)
       end do
 
       ! only interpolate noise back to ISCA grid if it is requested as diagnostic
@@ -90,9 +91,11 @@ subroutine papillon_alg(&
         call reverse(noise(i,j,:),noise(i,j,:))
       end if
       
+      if (any(isnan(noise_papillon))) print*, GETPID(), "WARN: NaNs detected in noise_papillon"
+
       select case (sampling_method)
         case (sampling_method_constant)
-          call sample_from_snoise(noise_papillon, constant_t_sd_profile, tpert_papillon)
+          call sample_from_snoise(noise_scale_factor*noise_papillon, constant_t_sd_profile, tpert_papillon)
         case (sampling_method_development)
           call reverse(z_full(i,j,:),z_full_r)
           call reverse(pfull(i,j,:),pfull_r)
@@ -115,7 +118,7 @@ subroutine papillon_alg(&
           call normalise_inputs(inputs, normalised_inputs)
           call thetasds00v001(normalised_inputs, t_sd_papillon)
           ! TODO: does this ml model output sd of theta or t? check
-          call sample_from_snoise(noise_papillon, t_sd_papillon, tpert_papillon)
+          call sample_from_snoise(noise_scale_factor*noise_papillon, t_sd_papillon, tpert_papillon)
 
           if (id_papillon_t_sd > 0) then
             call spline_set_coeffs(z_papillon, t_sd_papillon, ml_nlev, spline)
@@ -127,10 +130,16 @@ subroutine papillon_alg(&
     
       !  print*, GETPID(), "get_alternative_temperature done"
       !tpert_papillon = tpert_papillon - t_papillon
+      if (any(isnan(tpert_papillon))) print*, GETPID(), "WARN: NaNs detected in tpert_papillon"
+      
       ! Interpolate perturbation back to ISCA grid
       call spline_set_coeffs(z_papillon,tpert_papillon,ml_nlev,spline)
       ! print *, GETPID(), "spline set coeffs"
       tpert_r = spline_evaluate(z_full_r,spline)
+      if (any(isnan(tpert_r))) then
+        print*, GETPID(), "WARN: NaNs detected in tpert_r"
+        print*, "spline:", spline
+      endif
       !print*, GETPID(), "t pert spline evaluated"
       call reverse(tpert_r,tpert(i,j,:))
       !do k=1, ml_nlev

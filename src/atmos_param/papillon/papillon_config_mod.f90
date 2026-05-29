@@ -42,8 +42,7 @@ public :: sampling_method, sampling_method_correlated, &
     lat_scale_factor,lon_scale_factor,height_scale_factor,&
     noise_scale_factor,noise_centre_t,noise_centre_x,&
     noise_centre_y,noise_centre_z,papillon_init, output_papillon_diags,&
-    id_papillon_t_sd, id_papillon_noise, id_papillon_t_pert, noise, t_sd
-real, allocatable, dimension(:,:,:) :: noise, t_sd
+    id_papillon_t_sd, id_papillon_noise, id_papillon_t_pert
 integer, parameter :: sampling_method_correlated = 4
 integer, parameter :: sampling_method_uncorrelated = 3
 integer, parameter :: sampling_method_development = 2
@@ -191,8 +190,8 @@ subroutine papillon_init(axes, Time)
   call get_grid_domain(is, ie, js, je)
   call get_num_levels(num_levels)
 
-  if (id_papillon_noise > 0) allocate(noise(is:ie,js:je,num_levels))
-  if (id_papillon_t_sd > 0) allocate(t_sd(is:ie,js:je,num_levels))
+  ! if (id_papillon_noise > 0) allocate(noise(is:ie,js:je,num_levels))
+  ! if (id_papillon_t_sd > 0) allocate(t_sd(is:ie,js:je,num_levels))
 
      !
      !         ...                        
@@ -214,12 +213,12 @@ subroutine papillon_init(axes, Time)
      !
 end subroutine papillon_init
 
-subroutine output_papillon_diags(noise_, t_pert, t_sd_, Time)
-  real, intent(in), dimension(:,:,:) :: noise_, t_pert, t_sd_
+subroutine output_papillon_diags(noise, t_pert, t_sd, Time)
+  real, intent(in), dimension(:,:,:) :: noise, t_pert, t_sd
   type(time_type), intent(in) :: Time
   logical used
-  if (id_papillon_noise > 0) used = send_data(id_papillon_noise, noise_, Time)
+  if (id_papillon_noise > 0) used = send_data(id_papillon_noise, noise, Time)
   if (id_papillon_t_pert > 0) used = send_data(id_papillon_t_pert, t_pert, Time)
-  if (id_papillon_t_sd > 0) used = send_data(id_papillon_t_sd, t_sd_, Time)
+  if (id_papillon_t_sd > 0) used = send_data(id_papillon_t_sd, t_sd, Time)
 end subroutine output_papillon_diags
 end module papillon_config_mod
