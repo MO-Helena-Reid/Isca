@@ -138,7 +138,6 @@ subroutine papillon_alg(&
       tpert_r = spline_evaluate(z_full_r,spline)
       if (any(isnan(tpert_r))) then
         print*, GETPID(), "WARN: NaNs detected in tpert_r"
-        print*, "spline:", spline
       endif
       !print*, GETPID(), "t pert spline evaluated"
       call reverse(tpert_r,tpert(i,j,:))
