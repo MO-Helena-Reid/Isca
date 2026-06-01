@@ -872,6 +872,8 @@ convective_rain = 0.0
 !---call PAPILLON stochastic physics scheme to perturb t
 if (do_papillon) then
   sd_orog(:,:) = 0.0 ! TODO currently setting sd_orog to 0 rather than passing it through to scheme
+  ! FIXME: z_full is geopotential height not geometric height
+  
   ! print*, "array shape", SIZE(tg, 1), SIZE(tg, 2), SIZE(tg, 3), SIZE(tg, 4)
   CALL papillon_alg(papillon_t_pert,tg(:,:,:,previous),p_full(:,:,:,previous),grid_tracers(:,:,:,previous,nsphum),z_full(:,:,:,previous),rad_lat,rad_lon,fracland,z_surf,sd_orog,Time)
   ! if (any(abs(papillon_t_pert) /= 0.0)) then

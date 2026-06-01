@@ -15,7 +15,7 @@
 module papillon_alg_mod
 use time_manager_mod, only: time_type, get_time, print_time
 use simplex_noise_mod, only: snoise4d
-use spline_interp_mod, only: spline_type, spline_set_coeffs, spline_evaluate
+use spline_interp_mod, only: spline_type, spline_set_coeffs, spline_evaluate, spline_evaluate_1d
 use ml_constants_mod, only: ml_nlev, ml_input_len, z_papillon
 use papillon_config_mod, only: planet_radius, time_scale_factor, radius_scale_factor, &
   lat_scale_factor, lon_scale_factor, height_scale_factor, noise_scale_factor, noise_centre_t, noise_centre_x,&
@@ -87,7 +87,7 @@ subroutine papillon_alg(&
       ! only interpolate noise back to ISCA grid if it is requested as diagnostic
       if (id_papillon_noise > 0) then
         call spline_set_coeffs(z_papillon,noise_papillon,ml_nlev,spline)
-        noise(i,j,:) = spline_evaluate(z_full_r,spline)
+        noise(i,j,:) = spline_evaluate_1d(z_full_r,spline)
         call reverse(noise(i,j,:),noise(i,j,:))
       end if
       
@@ -134,10 +134,10 @@ subroutine papillon_alg(&
       
       ! Interpolate perturbation back to ISCA grid
       call spline_set_coeffs(z_papillon,tpert_papillon,ml_nlev,spline)
-      ! print *, GETPID(), "spline set coeffs"
-      tpert_r = spline_evaluate(z_full_r,spline)
+      tpert_r = spline_evaluate_1d(z_full_r,spline)
       if (any(isnan(tpert_r))) then
         print*, GETPID(), "WARN: NaNs detected in tpert_r"
+        ! print *, GETPID(), "spline n x y bcd lookup_index lookup_inv_dx", spline%n, spline%x, spline%y, spline%bcd, spline%lookup_index, spline%lookup_inv_dx
       endif
       !print*, GETPID(), "t pert spline evaluated"
       call reverse(tpert_r,tpert(i,j,:))

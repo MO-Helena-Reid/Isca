@@ -42,12 +42,17 @@ public :: sampling_method, sampling_method_correlated, &
     lat_scale_factor,lon_scale_factor,height_scale_factor,&
     noise_scale_factor,noise_centre_t,noise_centre_x,&
     noise_centre_y,noise_centre_z,papillon_init, output_papillon_diags,&
-    id_papillon_t_sd, id_papillon_noise, id_papillon_t_pert
+    id_papillon_t_sd, id_papillon_noise, id_papillon_t_pert,&
+    interpolation_method_cubic, interpolation_method_none,&
+    interpolation_method, interpolated_constant_t_sd_profile
 integer, parameter :: sampling_method_correlated = 4
 integer, parameter :: sampling_method_uncorrelated = 3
 integer, parameter :: sampling_method_development = 2
 integer, parameter :: sampling_method_constant = 1
 integer            :: sampling_method = sampling_method_constant
+integer, parameter :: interpolation_method_cubic = 1
+integer, parameter :: interpolation_method_none  = 2
+integer            :: interpolation_method = interpolation_method_cubic
 real,parameter     :: planet_radius = 6371229.0
 real               :: time_scale_factor = 4.62962963e-5
 real               :: radius_scale_factor = 1.56955588945e-7
@@ -130,6 +135,32 @@ real, parameter, dimension(ml_nlev) :: constant_t_sd_profile = [&
                         3.187616441406314616e-01,&
                         1.366351249509512866e-01,&
                         5.126769960918496627e-02]
+real, parameter, dimension(25) :: interpolated_constant_t_sd_profile = [&
+                        0.21641482367343323,&
+                        0.19864936614187503,&
+                        0.09929888541906226,&
+                        0.04835117750493305,&
+                        0.08591520146805777,&
+                        0.015345127032380777,&
+                        0.04903274110619474,&
+                        0.05544687249164544,&
+                        0.09335515015603112,&
+                        0.13431602998003747,&
+                        0.16907684548979432,&
+                        0.1886006144049872,&
+                        0.2172236107915683,&
+                        0.24204368803205412,&
+                        0.26287636584015334,&
+                        0.27797279936142627,&
+                        0.29083982009297976,&
+                        0.30004221892087296,&
+                        0.31108249628234586,&
+                        0.32135307587917716,&
+                        0.33279549846014583,&
+                        0.3508434790002495,&
+                        0.3728788961273602,&
+                        0.39839923632825935,&
+                        0.4311170887609934]
 character(len=14), parameter :: mod_name_ppl = "papillon"
 
 ! diagnostic IDs
@@ -141,7 +172,7 @@ namelist /papillon_nml/ &
   sampling_method, time_scale_factor,radius_scale_factor,&
   height_scale_factor,lat_scale_factor,lon_scale_factor,&
   noise_scale_factor,noise_centre_x,noise_centre_y,&
-  noise_centre_z,noise_centre_t
+  noise_centre_z,noise_centre_t, interpolation_method
 contains
 subroutine papillon_init(axes, Time)
   type(time_type), intent(in)       :: Time
@@ -185,6 +216,11 @@ subroutine papillon_init(axes, Time)
   if (id_papillon_t_sd > 0 .and. sampling_method == sampling_method_constant) then
     call error_mesg(mod_name_ppl, &
       'May not request papillon_t_sd as diagnostic when sampling method uses constant profile of t_sd. Change the value of sampling_method or remove the request for this diagnostic.',&
+      FATAL)
+  end if
+  if (interpolation_method == interpolation_method_none .and. sampling_method /= sampling_method_constant) then
+    call error_mesg(mod_name_ppl, &
+      'May only set interpolation method to none if sampling method is set to constant',&
       FATAL)
   end if
   call get_grid_domain(is, ie, js, je)

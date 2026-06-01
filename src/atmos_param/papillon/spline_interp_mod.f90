@@ -28,6 +28,7 @@ module spline_interp_mod
   public :: spline_type
   public :: spline_set_coeffs
   public :: spline_evaluate
+  public :: spline_evaluate_1d
 
 contains
 
@@ -192,5 +193,60 @@ contains
       spline_value = y(i) + dx*(bcd(1, i) + dx*(bcd(2, i) + dx*bcd(3, i)))
     end associate
   end function spline_evaluate
+
+ ! Evaluate the cubic spline interpolation at point u
+  ! result = y(i)+b(i)*(u-x(i))+c(i)*(u-x(i))**2+d(i)*(u-x(i))**3
+  ! where  x(i) <= u <= x(i+1)
+  function spline_evaluate_1d(u, spl) result(spline_value)
+    !> Evaluate at this coordinate
+    real(dp), intent(in), dimension(:) :: u
+    !> Spline data
+    type(spline_type), intent(in)      :: spl
+    integer                            :: i, j, k
+    real(dp), dimension(size(u))             :: spline_value
+    real(dp), dimension(size(u))       :: dx
+    do k = 1, size(u)
+      associate (n=>spl%n, x=>spl%x, y=>spl%y, bcd=>spl%bcd)
+        if(u(k) <= x(1)) then
+          spline_value = y(1)
+          return
+        else if(u(k) >= x(n)) then
+          spline_value = y(n)
+          return
+        end if
+
+        j = ceiling(spl%lookup_inv_dx * (u(k) - x(1)))
+
+        ! Even with the checks above, we probably have to check whether j < 1 or
+        ! j > size(spl%lookup_index) due to numerical round-off error
+        if (j < 1) then
+          j = 1
+        else if (j > size(spl%lookup_index)) then
+          j = size(spl%lookup_index)
+        end if
+
+        ! TODO: Not sure whether in practical applications it could be useful to
+        ! do a binary search here instead of a linear one
+
+        ! Find index i so that x(i) <= u <= x(i+1)
+        do i = spl%lookup_index(j), n-1
+          if (u(k) <= x(i+1)) exit
+        end do
+
+        ! evaluate spline interpolation
+        dx(k) = u(k) - x(i)
+        spline_value(k) = y(i) + dx(k)*(bcd(1, i) + dx(k)*(bcd(2, i) + dx(k)*bcd(3, i)))
+        if (isnan(dx(k))) print*, GETPID(), "NaN detected in dx at", k
+        if (isnan(y(i))) print*, GETPID(), "NaN detected in y at", i
+        if (isnan(dx(k)*bcd(1, i))) print*, GETPID(), "NaN detected in d*bcd(1,i) at", k
+        if (isnan(dx(k)*bcd(2, i))) print*, GETPID(), "NaN detected in d*bcd(2,i) at", k
+        if (isnan(dx(k)*bcd(3, i))) print*, GETPID(), "NaN detected in d*bcd(3,i) at", k
+        if (isnan(dx(k)*(bcd(2, i) + dx(k)*bcd(3, i)))) print*, GETPID(), "NaN detected in dx(k)*(bcd(2, i) + dx(k)*bcd(3, i))) at", k
+        if (isnan(spline_value(k))) print*, GETPID(), "NaN detected in spline_value at", k
+      end associate
+    end do
+    if (any(isnan(spline_value))) print*, GETPID(), "NaNs detected in spline_value"
+  end function spline_evaluate_1d
+
 
 end module spline_interp_mod
