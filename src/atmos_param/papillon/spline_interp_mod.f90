@@ -208,11 +208,11 @@ contains
     do k = 1, size(u)
       associate (n=>spl%n, x=>spl%x, y=>spl%y, bcd=>spl%bcd)
         if(u(k) <= x(1)) then
-          spline_value = y(1)
-          return
+          spline_value(k) = y(1)
+          cycle
         else if(u(k) >= x(n)) then
-          spline_value = y(n)
-          return
+          spline_value(k) = y(n)
+          cycle
         end if
 
         j = ceiling(spl%lookup_inv_dx * (u(k) - x(1)))
@@ -236,6 +236,8 @@ contains
         ! evaluate spline interpolation
         dx(k) = u(k) - x(i)
         spline_value(k) = y(i) + dx(k)*(bcd(1, i) + dx(k)*(bcd(2, i) + dx(k)*bcd(3, i)))
+        if (isnan(u(k))) print*, GETPID(), "NaN detected in u at", k
+        if (isnan(x(i))) print*, GETPID(), "NaN detected in x at", i
         if (isnan(dx(k))) print*, GETPID(), "NaN detected in dx at", k
         if (isnan(y(i))) print*, GETPID(), "NaN detected in y at", i
         if (isnan(dx(k)*bcd(1, i))) print*, GETPID(), "NaN detected in d*bcd(1,i) at", k

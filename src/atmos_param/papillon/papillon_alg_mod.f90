@@ -74,6 +74,7 @@ subroutine papillon_alg(&
   cos_longitudes = cos(lon)
   do i=1, size(t,1)
     do j=1, size(t,2)
+      call reverse(z_full(i,j,:),z_full_r)
       ! generate noise on papillon zlevs
       do k=1, ml_nlev
         noise_radius = (radius_scale_factor*planet_radius + height_scale_factor*z_papillon(k))
