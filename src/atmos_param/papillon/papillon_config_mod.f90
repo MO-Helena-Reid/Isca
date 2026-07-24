@@ -64,7 +64,7 @@ real               :: noise_centre_t=0.0,&
         noise_centre_x=0.0,&
         noise_centre_y=0.0,&
         noise_centre_z=0.0
-real, parameter, dimension(ml_nlev) :: constant_t_sd_profile = [&
+real, dimension(ml_nlev) :: constant_t_sd_profile = [&
                         7.474816271768951470e-01,&
                         7.220088264402453326e-01,&
                         6.913767786022448902e-01,&
@@ -172,7 +172,8 @@ namelist /papillon_nml/ &
   sampling_method, time_scale_factor,radius_scale_factor,&
   height_scale_factor,lat_scale_factor,lon_scale_factor,&
   noise_scale_factor,noise_centre_x,noise_centre_y,&
-  noise_centre_z,noise_centre_t, interpolation_method
+  noise_centre_z,noise_centre_t, interpolation_method,&
+  constant_t_sd_profile
 contains
 subroutine papillon_init(axes, Time)
   type(time_type), intent(in)       :: Time
