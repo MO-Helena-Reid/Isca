@@ -111,7 +111,8 @@ integer, parameter :: UNSET = -1,                & !! are NONE, SIMPLE_BETTS_MIL
                       SIMPLE_BETTS_CONV = 1,     &
                       FULL_BETTS_MILLER_CONV = 2,&
                       DRY_CONV = 3,              &
-                      RAS_CONV = 4
+                      RAS_CONV = 4,              &
+                      RANDOM = 6
 
 integer :: r_conv_scheme = UNSET  ! the selected convection scheme
 
@@ -450,15 +451,21 @@ else if(uppercase(trim(convection_scheme)) == 'UNSET') then
     r_conv_scheme = RAS_CONV
     call error_mesg('idealized_moist_phys','Using  relaxed Arakawa Schubert convection scheme.', NOTE)
   end if
+else if(uppercase(trim(convection_scheme)) == 'RANDOM') then
+  call error_mesg('idealized_moist_phys','Using convection scheme that varies randomly during run')
+  r_conv_scheme = RANDOM
 else
   call error_mesg('idealized_moist_phys','"'//trim(convection_scheme)//'"'//' is not a valid convection scheme.'// &
       ' Choices are NONE, SIMPLE_BETTS, FULL_BETTS_MILLER, RAS, DRY', FATAL)
+  lwet_convection = .true.
+  do_bm = .false.
+  do_ras = .true.
 endif
 
 if(lwet_convection .and. do_bm) &
   call error_mesg('idealized_moist_phys','lwet_convection and do_bm cannot both be .true.',FATAL)
 
-if(lwet_convection .and. do_ras) &
+if(lwet_convection .and. do_ras .and. NOT(r_conv_scheme == RANDOM)) &
   call error_mesg('idealized_moist_phys','lwet_convection and do_ras cannot both be .true.',FATAL)
 
 if(do_bm .and. do_ras) &
@@ -768,6 +775,47 @@ case(RAS_CONV)
 
         call ras_init (do_strat, axes,Time,tracers_in_ras)
 
+case(RANDOM)
+  
+       call qe_moist_convection_init()
+        !run without startiform cloud scheme
+
+       !---------------------------------------------------------------------
+       !    retrieve the number of registered tracers in order to determine
+       !    which tracers are to be convectively transported.
+       !---------------------------------------------------------------------
+
+       call get_number_tracers (MODEL_ATMOS, num_tracers= num_tracers)
+
+       allocate (tracers_in_ras(num_tracers))
+       ! Instead of finding out which of the tracers need to be advected, manually set this to .false.
+       tracers_in_ras = .false.
+       do_strat = .false.
+
+       !Commented code not used such that tracers are not advected by RAS. Could implement in future.
+
+       ! do n=1, num_tracers
+       !   if (query_method ('convection', MODEL_ATMOS, n, scheme)) then
+       !    num_ras_tracers = num_ras_tracers + 1
+       !    tracers_in_ras(n) = .true.
+       !   endif
+       ! end do
+
+       ! if (num_ras_tracers > 0) then
+       !   do_tracers_in_ras = .true.
+       ! else
+       !   do_tracers_in_ras = .false.
+       ! endif
+
+       !----------------------------------------------------------------------
+       !    for each tracer, determine if it is to be transported by convect-
+       !    ion, and the convection schemes that are to transport it. set a
+       !    logical flag to .true. for each tracer that is to be transported by
+       !    each scheme and increment the count of tracers to be transported
+       !    by that scheme.
+       !----------------------------------------------------------------------
+
+        call ras_init (do_strat, axes,Time,tracers_in_ras)
 end select
 
 !jp not sure why these diag_fields are fenced when condensation ones above are not...
@@ -840,6 +888,7 @@ integer,                    intent(in)    :: previous, current
 real, dimension(:,:,:),     intent(inout) :: dt_ug, dt_vg, dt_tg
 real, dimension(:,:,:,:),   intent(inout) :: dt_tracers
 
+integer :: r_conv_scheme_here  ! convection scheme in current column
 real :: delta_t
 real, dimension(size(ug,1), size(ug,2), size(ug,3)) :: tg_tmp, qg_tmp, RH,tg_interp, mc, dt_ug_conv, dt_vg_conv,&
         papillon_t_pert
@@ -852,7 +901,19 @@ integer, intent(in) , dimension(:,:),   optional :: kbot
 
 real, dimension(1,1,1):: tracer, tracertnd
 integer :: nql, nqi, nqa   ! tracer indices for stratiform clouds
+real :: random_value
 
+if (r_conv_scheme /= RANDOM ) then
+  r_conv_scheme_here = r_conv_scheme
+else
+  ! set convection scheme stochastically
+  CALL RANDOM_NUMBER(random_value)
+  if (random_value < 0.5) then
+    r_conv_scheme_here = SIMPLE_BETTS_MILLER
+  else
+    r_conv_scheme_here = RAS
+  endif
+endif
 tg(:,:,:,previous) = tg_in(:,:,:,previous)
 if(current == previous) then
    delta_t = dt_real
@@ -888,7 +949,7 @@ if (do_papillon) then
   tg(:,:,:,previous) = tg(:,:,:,previous) + papillon_t_pert
 endif
 
-select case(r_conv_scheme)
+select case(r_conv_scheme_here)
 
 case(SIMPLE_BETTS_CONV)
 
@@ -1006,9 +1067,15 @@ dt_tracers(:,:,:,nsphum) = dt_tracers(:,:,:,nsphum) + conv_dt_qg
 
 convective_rain = precip
 
-! Perform large scale convection
+! remove temporarily applied papillon temperature perturbation
+if (do_papillon) then
+  tg(:,:,:,previous) = tg(:,:,:,previous) - papillon_t_pert
+end if
+
+
+! Perform large scale condensation
 if (r_conv_scheme .ne. DRY_CONV) then
-  ! Large scale convection is a function of humidity only.  This is
+  ! Large scale condensation is a function of humidity only.  This is
   ! inconsistent with the dry convection scheme, don't run it!
   rain = 0.0; snow = 0.0
   call lscale_cond (         tg_tmp,                          qg_tmp,        &
@@ -1033,11 +1100,6 @@ if (r_conv_scheme .ne. DRY_CONV) then
   if(id_precip     > 0) used = send_data(id_precip, precip, Time)
 
 endif
-
-! remove temporarily applied papillon temperature perturbation
-if (do_papillon) then
-  tg(:,:,:,previous) = tg(:,:,:,previous) - papillon_t_pert
-end if
 
 ! Call the simple cloud scheme in line with SPOOKIE-2 requirements
 ! Using start of time step variables

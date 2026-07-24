@@ -28,7 +28,8 @@ module atmosphere_mod
 #endif
 
 use                  fms_mod, only: set_domain, write_version_number, field_size, file_exist, stdlog, &
-                                    mpp_pe, mpp_root_pe, error_mesg, FATAL, read_data, write_data, nullify_domain
+                                    mpp_pe, mpp_root_pe, error_mesg, FATAL, read_data, write_data, nullify_domain,&
+                                    NOTE
 
 use            constants_mod, only: grav, pi
 
@@ -79,8 +80,9 @@ public :: atmosphere_init, atmosphere, atmosphere_end, atmosphere_domain
 
 !=================================================================================================================================
 logical :: idealized_moist_model = .false.
+logical :: should_set_random_seed = .false.
 
-namelist/atmosphere_nml/ idealized_moist_model
+namelist/atmosphere_nml/ idealized_moist_model, should_set_random_seed
 
 !=================================================================================================================================
 
@@ -127,6 +129,10 @@ real, dimension(2) :: time_pointers
 character(len=64) :: file, tr_name
 character(len=256) :: message
 
+! random seed setting variables
+integer :: nseed, ir
+integer, allocatable :: seed(:)
+
 if(module_is_initialized) return
 
 call write_version_number(version, tagname)
@@ -142,6 +148,23 @@ call write_version_number(version, tagname)
 #endif
 stdlog_unit = stdlog()
 write(stdlog_unit, atmosphere_nml)
+
+if (should_set_random_seed) then
+  ! Discover required seed size
+  call random_seed(size=nseed)
+  allocate(seed(nseed))
+
+  ! Deterministic seed construction
+  seed(1) = 123456789
+
+  do ir = 2, nseed
+      seed(ir) = modulo(1664525 * seed(i-1) + 1013904223, huge(1))
+  end do
+
+  call random_seed(put=seed)
+  write(message,'("seed=[",*(I0,:,", "),"]")') seed
+  call error_mesg("atmosphere", message, NOTE)
+endif
 
 Time_step = Time_step_in
 call get_time(Time_step, seconds, days)
