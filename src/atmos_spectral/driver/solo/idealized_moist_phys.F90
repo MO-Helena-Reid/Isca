@@ -452,7 +452,7 @@ else if(uppercase(trim(convection_scheme)) == 'UNSET') then
     call error_mesg('idealized_moist_phys','Using  relaxed Arakawa Schubert convection scheme.', NOTE)
   end if
 else if(uppercase(trim(convection_scheme)) == 'RANDOM') then
-  call error_mesg('idealized_moist_phys','Using convection scheme that varies randomly during run')
+  call error_mesg('idealized_moist_phys','Using convection scheme that varies randomly during run', NOTE)
   r_conv_scheme = RANDOM
 else
   call error_mesg('idealized_moist_phys','"'//trim(convection_scheme)//'"'//' is not a valid convection scheme.'// &
@@ -465,7 +465,7 @@ endif
 if(lwet_convection .and. do_bm) &
   call error_mesg('idealized_moist_phys','lwet_convection and do_bm cannot both be .true.',FATAL)
 
-if(lwet_convection .and. do_ras .and. NOT(r_conv_scheme == RANDOM)) &
+if(lwet_convection .and. do_ras .and. r_conv_scheme /= RANDOM) &
   call error_mesg('idealized_moist_phys','lwet_convection and do_ras cannot both be .true.',FATAL)
 
 if(do_bm .and. do_ras) &
@@ -909,9 +909,9 @@ else
   ! set convection scheme stochastically
   CALL RANDOM_NUMBER(random_value)
   if (random_value < 0.5) then
-    r_conv_scheme_here = SIMPLE_BETTS_MILLER
+    r_conv_scheme_here = SIMPLE_BETTS_CONV
   else
-    r_conv_scheme_here = RAS
+    r_conv_scheme_here = RAS_CONV
   endif
 endif
 tg(:,:,:,previous) = tg_in(:,:,:,previous)
