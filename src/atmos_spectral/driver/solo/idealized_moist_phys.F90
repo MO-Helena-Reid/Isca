@@ -10,7 +10,7 @@ use fms_mod, only: write_version_number, file_exist, close_file, stdlog, error_m
                    FATAL, WARNING, read_data, field_size, uppercase, mpp_pe, check_nml_error
 
 ! cp_air needed for rrtmg and pstd_mks needed for pref calculation
-use           constants_mod, only: grav, rdgas, rvgas, cp_air, PSTD_MKS, dens_h2o 
+use           constants_mod, only: grav, rdgas, rvgas, cp_air, PSTD_MKS, dens_h2o, PI
 
 use        time_manager_mod, only: time_type, get_time, operator( + )
 
@@ -64,6 +64,7 @@ use  field_manager_mod, only: MODEL_ATMOS
 use rayleigh_bottom_drag_mod, only: rayleigh_bottom_drag_init, compute_rayleigh_bottom_drag
 
 use papillon_alg_mod, only: papillon_alg
+use sample_multivariate_normal_mod, only: rnorm
 
 #ifdef RRTM_NO_COMPILE
     ! RRTM_NO_COMPILE not included
@@ -132,6 +133,7 @@ logical :: do_socrates_radiation = .false.
 ! Papillon stochastic physics scheme options
 logical :: do_papillon=.false.
 real    :: ar1_decorrelation_t = 3600
+real    :: ar1_coefficient = 0.0
 
 ! MiMA uses damping
 logical :: do_damping = .false.
@@ -778,12 +780,12 @@ case(RAS_CONV)
 case(RANDOM)
       ! set up AR1 process
       if (ar1_decorrelation_t <= dt_real) then
-         call error_mesg("idealised_moist_phys","Cannot set AR(1) process expected correlation timescale shorter than model
-         timestep. Change the value of ar1_decorrelation_t to be greater than dt_atmos.", FATAL)
+         call error_mesg("idealized_moist_phys","Cannot set AR(1) process expected correlation timescale shorter than model &
+           timestep. Change the value of ar1_decorrelation_t to be greater than dt_atmos.", FATAL)
        endif
        ! compute ar1 coefficient from desired decorrelation time.
        ! This formula only works for a gaussian ar1.
-       ar1_coefficient = SIN((1.0/((ar1_decorrelation_t/dt_real)/(2.0*PI()))-PI())/-2.0)
+       ar1_coefficient = SIN((1.0/((ar1_decorrelation_t/dt_real)/(2.0*PI))-PI)/(-2.0))
        
        call qe_moist_convection_init()
         !run without startiform cloud scheme
