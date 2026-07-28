@@ -131,6 +131,7 @@ logical :: do_socrates_radiation = .false.
 
 ! Papillon stochastic physics scheme options
 logical :: do_papillon=.false.
+real    :: ar1_decorrelation_t = 3600
 
 ! MiMA uses damping
 logical :: do_damping = .false.
@@ -172,7 +173,7 @@ namelist / idealized_moist_phys_nml / turb, lwet_convection, do_bm, do_ras, roug
                                       bucket, init_bucket_depth, init_bucket_depth_land, &
                                       max_bucket_depth_land, robert_bucket, raw_bucket, &
                                       do_socrates_radiation, do_lcl_diffusivity_depth, &
-                                      do_papillon
+                                      do_papillon, ar1_decorrelation_t
 
 
 integer, parameter :: num_time_levels = 2 ! Add bucket - number of time levels added to allow timestepping in this module
@@ -735,7 +736,6 @@ case(DRY_CONV)
   call dry_convection_init(axes, Time)
 
 case(RAS_CONV)
-
         !run without startiform cloud scheme
 
        !---------------------------------------------------------------------
@@ -776,7 +776,15 @@ case(RAS_CONV)
         call ras_init (do_strat, axes,Time,tracers_in_ras)
 
 case(RANDOM)
-  
+      ! set up AR1 process
+      if (ar1_decorrelation_t <= dt_real) then
+         call error_mesg("idealised_moist_phys","Cannot set AR(1) process expected correlation timescale shorter than model
+         timestep. Change the value of ar1_decorrelation_t to be greater than dt_atmos.", FATAL)
+       endif
+       ! compute ar1 coefficient from desired decorrelation time.
+       ! This formula only works for a gaussian ar1.
+       ar1_coefficient = SIN((1.0/((ar1_decorrelation_t/dt_real)/(2.0*PI()))-PI())/-2.0)
+       
        call qe_moist_convection_init()
         !run without startiform cloud scheme
 
@@ -878,7 +886,7 @@ endif
 end subroutine idealized_moist_phys_init
 !=================================================================================================================================
 subroutine idealized_moist_phys(Time, p_half, p_full, z_half, z_full, ug, vg, psg, wg_full, tg_in, grid_tracers, &
-                                previous, current, dt_ug, dt_vg, dt_tg, dt_tracers, mask, kbot)
+                                previous, current, dt_ug, dt_vg, dt_tg, dt_tracers, ar1_state, mask, kbot)
 
 type(time_type),            intent(in)    :: Time
 real, dimension(:,:,:,:),   intent(in)    :: p_half, p_full, z_half, z_full, ug, vg, tg_in
@@ -887,6 +895,7 @@ real, dimension(:,:,:,:,:), intent(in)    :: grid_tracers
 integer,                    intent(in)    :: previous, current
 real, dimension(:,:,:),     intent(inout) :: dt_ug, dt_vg, dt_tg
 real, dimension(:,:,:,:),   intent(inout) :: dt_tracers
+real,                       intent(inout) :: ar1_state
 
 integer :: r_conv_scheme_here  ! convection scheme in current column
 real :: delta_t
@@ -901,14 +910,13 @@ integer, intent(in) , dimension(:,:),   optional :: kbot
 
 real, dimension(1,1,1):: tracer, tracertnd
 integer :: nql, nqi, nqa   ! tracer indices for stratiform clouds
-real :: random_value
 
 if (r_conv_scheme /= RANDOM ) then
   r_conv_scheme_here = r_conv_scheme
 else
   ! set convection scheme stochastically
-  CALL RANDOM_NUMBER(random_value)
-  if (random_value < 0.5) then
+  ar1_state = ar1_coefficient*ar1_state + rnorm()
+  if (ar1_state < 0.0) then
     r_conv_scheme_here = SIMPLE_BETTS_CONV
   else
     r_conv_scheme_here = RAS_CONV

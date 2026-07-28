@@ -107,6 +107,7 @@ real, allocatable, dimension(:,:) :: rad_lon_2d, rad_lat_2d
 real, allocatable, dimension(:,:) :: surf_geopotential
 real, allocatable, dimension(:,:) :: rad_lonb_2d, rad_latb_2d
 real, allocatable, dimension(:)   :: rad_lonb, rad_latb
+real :: ar1_state = 0.0
 
 integer :: previous, current, future
 logical :: module_is_initialized =.false.
@@ -322,7 +323,7 @@ Time_next = Time + Time_step
 
 if(idealized_moist_model) then
    call idealized_moist_phys(Time, p_half, p_full, z_half, z_full, ug, vg, psg, wg_full, tg, grid_tracers, &
-                             previous, current, dt_ug, dt_vg, dt_tg, dt_tracers)
+                             previous, current, dt_ug, dt_vg, dt_tg, dt_tracers, ar1_state)
 else
    call hs_forcing(1, ie-is+1, 1, je-js+1, delta_t, Time_next, rad_lon_2d, rad_lat_2d, &
                 p_half(:,:,:,current ),       p_full(:,:,:,current   ), &
