@@ -18,7 +18,8 @@ module large_scale_cloud_mod
   character(len=14), parameter :: mod_name = "ls_cloud"
 
   integer, parameter :: B_SPOOKIE=1, B_SUNDQVIST=2, B_LINEAR=3, &
-                        B_SMITH=4, B_SLINGO=5, B_XR96=6
+                        B_SMITH=4, B_SLINGO=5, B_XR96=6, &
+                        B_RANDOM=7
   integer, private  :: cf_diag_formula = B_LINEAR
   character(len=32) :: cf_diag_formula_name = 'linear'
 
@@ -118,14 +119,15 @@ module large_scale_cloud_mod
     else if(method_str == 'XR96') then
       cf_diag_formula = B_XR96
       call error_mesg(mod_name, 'Using Xu and Krueger (1996) cloud fraction diagnostic formula.', NOTE)
-
+    else if(method_str == 'RANDOM') then
+      cf_diag_formula = B_RANDOM
     else
       call error_mesg(mod_name, '"'//trim(cf_diag_formula_name)//'"'// &
                 ' is not a valid cloud fraction diagnostic formula.', FATAL)
     endif
 
     if (cf_diag_formula .eq. B_SPOOKIE .or. cf_diag_formula .eq. B_SUNDQVIST &
-    .or. cf_diag_formula .eq. B_SMITH) then
+    .or. cf_diag_formula .eq. B_SMITH .or. cf_diag_formula .eq. B_RANDOM) then
       do_simple_rhcrit = .true.
     else
       do_simple_rhcrit = .false.
@@ -239,9 +241,29 @@ module large_scale_cloud_mod
     real, intent(out), dimension(:,:,:) :: cf
     real, dimension(size(pfull,1), size(pfull,2), size(pfull,3)) :: rhc
     real :: mid_top, mid_base, p_para, alpha_0, gamma ! For Xu and Krueger (1996)
-    integer :: i, j, k
+    integer :: i, j, k, cf_diag_formula_here
+    real :: random_value, random_division
 
-    select case(cf_diag_formula)
+    if (cf_diag_formula /= B_RANDOM) then
+      cf_diag_formula_here = cf_diag_formula
+    else
+      CALL RANDOM_NUMBER(random_value)
+      random_division = 1.0/6.0
+      if (random_value < random_division) then
+        cf_diag_formula_here = B_SPOOKIE
+      else if (random_value >= random_division .and. random_value < 2.0*random_division) then
+        cf_diag_formula_here = B_SMITH
+      else if (random_value >= 2.0*random_division .and. random_value < 3.0*random_division) then
+        cf_diag_formula_here = B_SLINGO
+      else if (random_value >= 3.0*random_division .and. random_value < 4.0*random_division) then
+        cf_diag_formula_here = B_SUNDQVIST
+      else if (random_value >= 4.0*random_division .and. random_value < 5.0*random_division) then
+        cf_diag_formula_here = B_XR96
+      else
+        cf_diag_formula_here = B_LINEAR
+      endif
+    endif
+    select case(cf_diag_formula_here)
       case(B_SPOOKIE)
         cf = (rh - rhcrit) / (1.0 - rhcrit)
 
