@@ -1060,6 +1060,22 @@ case(RAS_CONV)
    if(id_conv_dt_tg > 0) used = send_data(id_conv_dt_tg, conv_dt_tg, Time)
    if(id_conv_rain  > 0) used = send_data(id_conv_rain, precip, Time)
 
+case(BECHTOLD_CONV)
+  call bechtold_interface(is,   js,     Time,                                                  &
+                tg(:,:,:,previous),   grid_tracers(:,:,:,previous,nsphum),           &
+                ug(:,:,:,previous),  vg(:,:,:,previous),  &
+                wg_full(:,:,:,previous), p_full(:,:,:,previous),  &
+                p_half(:,:,:,previous), flux_t, flux_q, z_full(:,:,:,previous),      &
+                z_half(:,:,:,previous), coldT,  delta_t,                             &
+                conv_dt_tg,   conv_dt_qg, dt_ug_conv,  dt_vg_conv,                   &
+                rain, snow,   do_strat,                                              &
+                klzbs,  klcls,                                                       &
+                !OPTIONAL
+                mask,  kbot,                                                         &
+                !OPTIONAL OUT
+                mc,   tracer(:,:,:), tracer(:,:,:),                          &
+               tracer(:,:,:),  tracertnd(:,:,:),                             &
+               tracertnd(:,:,:), tracertnd(:,:,:))
 
 case(NO_CONV)
    conv_dt_tg = 0.0
