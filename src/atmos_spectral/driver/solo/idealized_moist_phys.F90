@@ -1069,7 +1069,7 @@ case(BECHTOLD_CONV)
                 z_half(:,:,:,previous), coldT,  delta_t,                             &
                 conv_dt_tg,   conv_dt_qg, dt_ug_conv,  dt_vg_conv,                   &
                 rain, snow,   do_strat,                                              &
-                klzbs,  klcls,                                                       &
+                klzbs,  klcls,  rad_lat,                                             &
                 !OPTIONAL
                 mask,  kbot,                                                         &
                 !OPTIONAL OUT

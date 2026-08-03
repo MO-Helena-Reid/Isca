@@ -10,7 +10,7 @@ module bechtold_alg_mod
                   flux_t0, flux_q0, zfull0, zhalf0,  coldT0,      &
                   dtime,  dtemp0,  dqvap0,    duwnd0,  dvwnd0,    &
                   rain0,  snow0,   do_strat,                      &
-                  klzbs,  klcls,                                  &
+                  klzbs,  klcls, rad_lat,                         &
                   !OPTIONAL IN
                   mask,    kbot,                                  &
                   !OPTIONAL OUT
@@ -33,6 +33,7 @@ module bechtold_alg_mod
 !     uwnd0     - U component of wind
 !     vwnd0     - V component of wind
 !     coldT0    - should the precipitation assume to be frozen?
+!     rad_lat   - latitudes in radians
 !Optional:
 !     R0        - OPTIONAL;prognostic tracers to move around
 !                 note that R0 is assumed to be dimensioned
@@ -52,6 +53,7 @@ module bechtold_alg_mod
   real,            intent(in)                   :: dtime
   real,            intent(in), dimension(:,:,:) :: pres0, pres0_int, zhalf0, omega0
   real,            intent(in), dimension(:,:,:) :: temp0, qvap0, uwnd0, vwnd0
+  real,            intent(in), dimension(:,:)   :: rad_lat
   logical,         intent(in), dimension(:,:)   :: coldT0
   logical,         intent(in)                   :: do_strat
   real,  intent(inout), dimension(:,:,:) ,optional :: ql0, qi0, qa0
@@ -81,22 +83,90 @@ module bechtold_alg_mod
   real, intent(out), OPTIONAL, dimension(:,:,:) :: dl0, di0, da0
   real,  intent(out), dimension(:,:,:,:), optional :: qtrras
 !---------------------------------------------------------------------
-integer :: klon, imax, jmax, kmax, klev, j,k
-
+integer :: klon, imax, jmax, kmax, klev, i,j,k
+logical :: LDSHCV, lacc
+logical :: l_lpi = .FALSE.
 real, dimension(SIZE(temp0,1),SIZE(temp0,3)) :: plitot, zdgeoh, zdph,&
                                                 ptenta,ptenqa,ptenrhoq,&
                                                 ptenrhol,ptenrhoi,&
                                                 ptenrhor,ptenrhos,&
+                                                pmfu, pmfd,&
+                                                pmfude_rate, pmfdde_rate,&
+                                                ptu,pqu,plu,pcore
+integer, dimension(SIZE(temp0,1),SIZE(temp0,2)) :: k650, k700, k950
+real, dimension(SIZE(temp0,1),SIZE(temp0,2)) :: tropics_mask
 real, dimension(SIZE(temp0,1),SIZE(temp0,2),SIZE(temp0,3)) :: rho_full
-
+logical, dimension(SIZE(temp0,1)) :: ldcum
+integer, dimension(SIZE(temp0,1)) :: ktype, kcbot, kctop, iseed
+real,    dimension(SIZE(temp0,1)) :: fac_entrorg, fac_rmfdeps,&
+                                     pcape, pvddraf, peis, cell_area,&
+                                     mtnmask
+real,    dimension(SIZE(zhalf0,1),SIZE(zhalf0,3)) :: pmflxr,pmflxs,pdtke_con
+REAL, POINTER, DIMENSION(:) :: pertb => NULL ()
+REAL, DIMENSION(2) :: mf_bulk,mf_perturb,mf_num ! setting dimension to silly size because won't use these
+real :: abs_lat_degrees
+real, parameter :: rad2deg = 57.2957795131
   ! --- Set dimensions
   imax  = size( temp0, 1 )
   jmax  = size( temp0, 2 )
   kmax  = size( temp0, 3 )
   klon = jmax
   klev = kmax
+  ! Set this hardware switch to false
+  lacc = .FALSE.
+  ! Set these output variables
+  ldcum = .FALSE.
+  ktype = 0
+  kctop = 0
+  kcbot = 0
+  peis  = 0.0
+  ! Set mountain mask to 0 due to not knowing the required conversion.
+  ! This means some conditional-on-orography behaviour will be switched off.
+  mtnmask = 0.0
+  ! Initialise shallow convection switch
+  LDSHCV = .TRUE.
+  ! Initialise ensemble perturbation config options
+  fac_entrorg = 1.0
+  fac_rmfdeps = 1.0
   ! Calculate air density
   rho_full(:,:,:) = pres0(:,:,:) / (rdgas * temp0(:,:,:))
+
+  ! Find 650hPa and 700hPa levels
+  DO i=1,imax
+    DO j=1,jmax
+      DO k=1,kmax
+        IF (pres0(i,j,k) < 65000.0) THEN
+          k650(i,j) = k
+        ENDIF
+        IF (pres0(i,j,k) < 70000.0) THEN
+          k700(i,j) = k
+        ENDIF
+        IF (pres0(i,j,k) < 95000.0) THEN
+          k950(i,j) = k
+        ENDIF
+      END DO
+      k650(i,j) = MIN(k650(i,j),kmax-1)
+      k700(i,j) = MIN(k700(i,j),kmax-1)
+      k950(i,j) = MIN(k950(i,j),kmax-1)
+    END DO
+  END DO
+
+  ! TODO: move this to an initialisation routine
+  ! Set tropical mask
+  DO i=1,imax
+    DO j=1,jmax
+      abs_lat_degrees = ABS(rad_lat(i,j)*rad2deg)
+      IF (abs_lat_degrees < 25.0) THEN
+        tropics_mask(i,j) = 1.0
+      ELSE IF (abs_lat_degrees > 30.0) THEN
+        tropics_mask(i,j) = 0.0
+      ELSE
+        tropics_mask(i,j) = (30.0 - abs_lat_degrees)/5.0
+      ENDIF
+    END DO
+  END DO
+
+  ! Begin main loop
   DO j=1,jmax
     ! Set these output variables to zero just in case
     ptenrhol = 0.0
@@ -111,223 +181,93 @@ real, dimension(SIZE(temp0,1),SIZE(temp0,2),SIZE(temp0,3)) :: rho_full
     ! get in Isca so just setting them to zero.
     ptenqa = 0.0
     ptenta = 0.0
-
-
+    ! set cell area to negative so the model hopefully crashes if this is used
+    cell_area = -1.0
+    ! set iseed to 0 everywhere. This should not be used either.
+    iseed = 0
+    
+    ! set total liquid and ice if present.
     IF (PRESENT(ql0) .and. PRESENT(qi0)) THEN
       plitot = ql0(:,j,:) + qi0(:,j,:)
     ELSE
       plitot = 0.0
     ENDIF
+
+    ! set thickness of geopotential and pressure levels
     DO k=1,kmax
       zdgeoh(:,k) = ABS(zhalf0(:,k)-zhalf0(:,k+1))
       zdph(:,k) = ABS(pres0_int(:,k)-pres0_int(:,k+1))
     END DO
+
+    ! Call the Bechtold scheme
     CALL cumastrn &
-  & (  kidia,    kfdia,    klon,   ktdia,   klev, &
-  & ldland, ldlake, dtime, phy_params, k950,      &
-  & trop_mask, mtnmask,  paer_ss,                 &
-  & temp0(:,j,:),qvap0(:,j,:),                    &
-  & uwnd0(:,j,:), vwnd0(:,j,:), plitot,           &
-  & omega0(:,j,:),                                &
-  & ql0(:,j,:), qi0(:,j,:), flux_t0(:,j),         &
-  & flux_q0(:,j), flux_q0(:,j),    flux_t0(:,j),  &
-  & pres0(:,j,:), pres0_int(:,j,:), zfull0(:,j,:),&
-  & zhalf0(:,j,:),                                &
-  & zdph,               zdgeoh,                   &
-  & dtent0(:,j,:),duwnd0(:,j,:),dvwnd0(:,j,:),    &
-  & ptenta, ptenqa,                               &
-  & dqvap0(:,j,:), ptenrhoq, ptenrhol, ptenrhoi,  &
-  & ptenrhor, ptenrhos,                           &
-  & ldcum,      ktype , kcbot,    kctop,          &
-  & LDSHCV,   fac_entrorg, fac_rmfdeps,           &
-  & pmfu,     pmfd,                               &
-  & pmfude_rate,        pmfdde_rate,              &
-  & ptu,      pqu,      plu,  pcore,              &
-  & pmflxr,   pmflxs,   prain, pdtke_con,         &
-  & pcape,    pvddraf,                            &
-  & pcen, ptenrhoc,                               &
-  & l_lpi, l_lfd, lpi, mlpi, koi, lfd, peis,      &
-  & pertb,                                        &
-  & lspinup, k650,k700, temp_s,                   &
-  & cell_area,iseed,                              &
-  & mf_bulk,mf_perturb,mf_num,p_cloud_ensemble,   &
-  & pclnum_a, pclmf_a, pclnum_p, pclmf_p,         &
-  & pclnum_d, pclmf_d, lacc                       )
+  & (  kidia,
+  & kfdia, 
+  & klon,   
+  & ktdia,                              
+  & klev,                                         &
+  & ldland,                                       &
+  & ldlake,                                       & 
+  & ptsphy = dtime,                               & ! in: timestep (s)
+  & phy_params = ,                                & ! in: TODO: add this input
+  & k950 = k950,                                  & ! in: level at which 950hPa
+  & trop_mask = tropics_mask,                     & ! in: 1 if lat less than 25, 0 if more than 30, and linear between.
+  & mtnmask = mtnmask,                            & ! in: mountain mask
+  & pten = temp0(:,j,:),                          & ! in: initial temperature
+  & pqen = qvap0(:,j,:),                          & ! in: initial specific humidity
+  & puen = uwnd0(:,j,:),                          & ! in: initial u wind
+  & pven = vwnd0(:,j,:),                          & ! in: initial v wind
+  & plitot = plitot,                              & ! in: initial total liquid and ice
+  & pvervel = omega0(:,j,:),                      & ! in: initial vertical velocity
+  & plen = ql0(:,j,:),                            & ! in: initial liquid
+  & pien = qi0(:,j,:),                            & ! in: initial ice
+  & shfl_s = flux_t0(:,j),                        & ! in: sensible heat flux
+  & qhfl_s = flux_q0(:,j),                        & ! in: surface moisture flux
+  & pqhfl = flux_q0(:,j),                         & ! in: surface moisture flux again (don't ask)
+  & pahfs = flux_t0(:,j),                         & ! in: sensible heat flux again (don't ask)
+  & pap = pres0(:,j,:),                           & ! in: pressure on full levels
+  & paph = pres0_int(:,j,:),                      & ! in: pressure on half levels
+  & pgeo = zfull0(:,j,:),                         & ! in: geopotential on full levels
+  & pgeoh = zhalf0(:,j,:),                        & ! in: geopotential on half levels
+  & zdph = zdph,                                  & ! in: pressure thickness on full levels
+  & zdgeoh = zdgeoh,                              & ! in: geopotential thickness on full levels
+  & ptent = dtent0(:,j,:),                        & ! out: temperature tendency
+  & ptenu = duwnd0(:,j,:),                        & ! out: u wind tendency
+  & ptenv = dvwnd0(:,j,:),                        & ! out: v wind tendency
+  & ptenta = ptenta,                              & ! in: temperature tendency due to advection
+  & ptenqa = ptenqa,                              & ! in: moisture tendency due to advection
+  & ptenq = dqvap0(:,j,:),                        & ! out: moisture tendency kg/(kg*s)
+  & ptenrhoq = ptenrhoq,                          & ! out: MOISTURE MASS DENSITY TENDENCY                KG/(M3*S)
+  & ptenrhol = ptenrhol,                          & ! out: LIQUID WATER MASS DENSITY TENDENCY            KG/(M3*S)
+  & ptenrhoi = ptenrhoi,                          & ! out: ICE CONDENSATE MASS DENSITY TENDENCY          KG/(M3*S)
+  & ptenrhor = ptenrhor,                          & ! out: DETRAINED RAIN MASS DENSITY TENDENCY          KG/(M3*S)
+  & ptenrhos = ptenrhos,                          & ! out: DETRAINED SNOW MASS DENSITY TENDENCY          KG/(M3*S)
+  & ldcum = ldcum,                                & ! out: .TRUE. for convective points
+  & ktype = ktype,                                & ! out: convection type (1: penetrative, 2: shallow, 3: midlevel)
+  & kcbot = kcbot,                                & ! out: level of cloud bottom
+  & kctop = kctop,                                & ! out: level of cloud top
+  & LDSHCV=LDSHCV,                                & ! in: shallow convection indicator, not clear what this does
+  & fac_entrorg = fac_entrorg,                    & ! in: tuning factor for ensemble perturbations for entrainment parameter
+  & fac_rmfdeps = fac_rmfdeps,                    & ! in: tuning factor for ensemble perturbations for downdraft mass flux
+  & pmfu = pmfu,                                  & ! out: mass flux updrafts
+  & pmfd = pmfd,                                  & ! out: mass flux downdrafts
+  & pmfude_rate,                                  & ! out: mass flux updraft detrainment rate
+  & pmfdde_rate,                                  & ! out: mass flux downdraft detrainment rate
+  & ptu = ptu,                                    & ! out: temperature in updrafts,
+  & pqu = pqu,                                    & ! out: humidity in updrafts,
+  & plu = plu,                                    & ! out: liquid in updrafts,
+  & pcore = pcore,                                & ! out: updraft core fraction
+  & pmflxr = pmflxr,                              & ! out: conv. rain flux
+  & pmflxs = pmflxs,                              & ! out: conv. snow flux
+  & prain = prain,                                & ! out: tot. prec. in updrafts without evap in downdrafts
+  & pdtke_con = pdtke_con,                        & ! out: buoyant tke production at half levels
+  & pcape = pcape,                                & ! out: cape
+  & pvddraf = pvddraf,                            & ! out: convective gust at surface
+  & peis = peis,                                  & ! out: estimated inversion strength
+  & k650 = k650,                                  & ! in: level at which 650hPa
+  & k700 = k700,                                  & ! in: level at which 700hPa
+  & lacc = lacc                                   ) ! in: a hardware option we'll always have at .FALSE.
 
-
-! Code Description:
-!     PARAMETER     DESCRIPTION                                   UNITS
-!     ---------     -----------                                   -----
-!     INPUT PARAMETERS (INTEGER):
-
-!    *KIDIA*        START POINT
-!    *KFDIA*        END POINT
-!    *KLON*         NUMBER OF GRID POINTS PER PACKET
-!    *KTDIA*        START OF THE VERTICAL LOOP
-!    *KLEV*         NUMBER OF LEVELS
-!    *KSTEP*        CURRENT TIME STEP INDEX
-!    *KSTART*       FIRST STEP OF MODEL
-
-!    *k650*         LEVEL INDEX AT 650hPa
-!    *iseed*        SEED FOR RANDOM NUMBER GENERATOR
-
-!     INPUT PARAMETERS (LOGICAL)
-
-!    *LDLAND*       LAND SEA MASK (.TRUE. FOR LAND)
-!    *LDLAKE*       LAKE MASK (.TRUE. FOR LAKE)
-!    *lspinup*      SPINUP CONVECTIVE CLOUD ENSEMBLE
-!    *L_LPI*        COMPUTE LPI, MLPI, KOI
-!    *L_LFD*        COMPUTE LFD
-
-!     INPUT PARAMETERS (REAL)
-
-!    paer_ss    monthly aerosol climatology sea salt (optical thickness)
-
-!    *PTSPHY*       TIME STEP FOR THE PHYSICS                       S
-!    *PTEN*         PROVISIONAL ENVIRONMENT TEMPERATURE (T+1)       K
-!    *PQEN*         PROVISIONAL ENVIRONMENT SPEC. HUMIDITY (T+1)  KG/KG
-!    *PUEN*         PROVISIONAL ENVIRONMENT U-VELOCITY (T+1)       M/S
-!    *PVEN*         PROVISIONAL ENVIRONMENT V-VELOCITY (T+1)       M/S
-!    *PCEN*         PROVISIONAL ENVIRONMENT TRACER CONCENTRATIONS KG/KG
-!    *PLITOT*       GRID MEAN LIQUID WATER+ICE CONTENT            KG/KG
-!    *PVERVEL*      VERTICAL VELOCITY                             PA/S
-!    *PQSEN*        ENVIRONMENT SPEC. SATURATION HUMIDITY (T+1)   KG/KG
-!    *PQHFL*        MOISTURE FLUX (EXCEPT FROM SNOW EVAP.)        KG/(SM2)
-!    *PAHFS*        SENSIBLE HEAT FLUX                            W/M2
-!    *SHFL_S*       SENSIBLE HEAT FLUX (never halo-averaged)      W/M2
-!    *QHFL_S*       MOISTURE FLUX (never halo-averaged)           KG/(SM2)
-!    *PAP*          PROVISIONAL PRESSURE ON FULL LEVELS             PA
-!    *PAPH*         PROVISIONAL PRESSURE ON HALF LEVELS             PA
-!    *PGEO*         GEOPOTENTIAL                                  M2/S2
-!    *PGEOH*        GEOPOTENTIAL ON HALF LEVELS                   M2/S2
-!    *zdgeoh*       geopot thickness on full levels               M2/S2
-!    *zdph*         pressure thickness on full levels               PA
-!
-!    *PSSTRU*       SURFACE MOMENTUM FLUX U                - not used presently
-!    *PSSTRV*       SURFACE MOMENTUM FLUX V                - not used presently
-!
-!    *PTENTA*       TEMPERATURE TENDENCY DYNAMICS=TOT ADVECTION    K/S
-!    *PTENQA*       MOISTURE    TENDENCY DYNAMICS=TOT ADVECTION    1/S
-
-!    *temp_s*       TEMPERATURE IN LOWEST MODEL LEVEL                K
-!    *cell_area*    GRID CELL AREA                                  M2?
-!!!  FOR SPP
-!    *pertb*        STOCHASTIC PATTERN FOR PERTURBATION
-!!!  ALLOCATED ONLY IF lstoch_sde=.TRUE. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!    *pclnum_a*     ACTIVE CLOUD NUMBER (T)               M-2
-!    *pclmf_a*      ACTIVE MASS FLUX (T)                KG/(M2*S)
-!    *pclnum_p*     PASSIVE CLOUD NUMBER (T)              M-2
-!    *pclmf_p*      PASSIVE  MASS FLUX (T)              KG/(M2*S)
-
-!   !!!  ALLOCATED ONLY IF lstoch_deep=.TRUE. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!    *pclnum_d* PROGNOSTIC DEEP CLOUD NUMBER (T)               M-2
-!    *pclmf_d*  PROGNOSTIC DEEP MASS FLUX (T)                KG/(M2*S)
-
-!    *PTENT*        TEMPERATURE TENDENCY                           K/S
-!    *PTENQ*        MOISTURE TENDENCY                             KG/(KG S)
-!    *PTENU*        TENDENCY OF U-COMP. OF WIND                    M/S2
-!    *PTENV*        TENDENCY OF V-COMP. OF WIND                    M/S2
-!    *PTENRHOC*     TENDENCY OF CHEMICAL TRACERS                  KG/(M3*S)
-
-!    OUTPUT PARAMETERS (LOGICAL):
-
-!    *LDCUM*        FLAG: .TRUE. FOR CONVECTIVE POINTS
-!    *LDSC*         FLAG: .TRUE. FOR SC-POINTS
-
-!    OUTPUT PARAMETERS (INTEGER):
-
-!    *KTYPE*        TYPE OF CONVECTION
-!                       1 = PENETRATIVE CONVECTION
-!                       2 = SHALLOW CONVECTION
-!                       3 = MIDLEVEL CONVECTION
-!    *KCBOT*        CLOUD BASE LEVEL
-!    *KCTOP*        CLOUD TOP LEVEL
-!    *KBOTSC*       CLOUD BASE LEVEL FOR SC-CLOUDS
-!!!  ALLOCATED ONLY IF lstoch_sde=.TRUE. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!    *pclnum_a*     PROGNOSTIC ACTIVE CLOUD NUMBER (T+1)               M-2
-!    *pclmf_a*      PROGNOSTIC ACTIVE MASS FLUX (T+1)                KG/(M2 S)
-!    *pclnum_p*     PROGNOSTIC PASSIVE CLOUD NUMBER (T+1)              M-2
-!    *pclmf_p*      PROGNOSTIC PASSIVE  MASS FLUX (T+1)              KG/(M2 S)
-!!!  ALLOCATED ONLY IF lstoch_deep=.TRUE. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!    *pclnum_d*     PROGNOSTIC DEEP CLOUD NUMBER (T+1)                 M-2
-!    *pclmf_d*      PROGNOSTIC DEEP MASS FLUX (T+1)                  KG/(M2 S)
-
-!    OUTPUT PARAMETERS (REAL):
-
-!    *PTU*          TEMPERATURE IN UPDRAFTS                         K
-!    *PQU*          SPEC. HUMIDITY IN UPDRAFTS                    KG/KG
-!    *PLU*          LIQUID WATER CONTENT IN UPDRAFTS              KG/KG
-!    *PCORE*        UPDRAFT CORE FRACTION                         0-1
-!    *PLUDE*        DETRAINED LIQUID WATER                        KG/(M2*S)
-!    *PENTH*        INCREMENT OF DRY STATIC ENERGY                 J/(KG*S)
-!    *PMFLXR*       CONVECTIVE RAIN FLUX                          KG/(M2*S)
-!    *PMFLXS*       CONVECTIVE SNOW FLUX                          KG/(M2*S)
-!    *PRAIN*        TOTAL PRECIP. PRODUCED IN CONV. UPDRAFTS      KG/(M2*S)
-!                   (NO EVAPORATION IN DOWNDRAFTS)
-!    *PMFU*         MASSFLUX UPDRAFTS                             KG/(M2*S)
-!    *PMFD*         MASSFLUX DOWNDRAFTS                           KG/(M2*S)
-!    *PDTKE_CON     CONV. BUOYANT TKE-PRODUCTION AT HALF LEVELS   M2/S**3)
-!    *PMFUDE_RATE*  UPDRAFT DETRAINMENT RATE                      KG/(M3*S)
-!    *PMFDDE_RATE*  DOWNDRAFT DETRAINMENT RATE                    KG/(M3*S)
-!    *PCAPE*        CONVECTVE AVAILABLE POTENTIAL ENERGY           J/KG
-!    *PWMEAN*       VERTICALLY AVERAGED UPDRAUGHT VELOCITY         M/S
-!    *pvddraf*      convective gust at surface                     M/S
-!    *PTENRHOQ*     MOISTURE MASS DENSITY TENDENCY                KG/(M3*S)
-!    *PTENRHOL*     LIQUID WATER MASS DENSITY TENDENCY            KG/(M3*S)
-!    *PTENRHOI*     ICE CONDENSATE MASS DENSITY TENDENCY          KG/(M3*S)
-!    *PTENRHOR*     DETRAINED RAIN MASS DENSITY TENDENCY          KG/(M3*S)
-!    *PTENRHOS*     DETRAINED SNOW MASS DENSITY TENDENCY          KG/(M3*S)
-!    *LPI*          LIGHTNING POTENTIAL INDEX AS IN LYNN AND YAIR (2010) J/KG
-!    *MLPI*         MODIFIED LPI USING KOI
-!    *KOI*          KONVEKTIONS INDEX                             K
-!    *LFD*          LIGHTNING FLASH DENSITY AS IN LOPEZ(2016)     1/(KM2*DAY)
-!    *mf_bulk*      CLOUD BASE MASS FLUX FROM T-B SCHEME          KG/(M2*S)
-!    *mf_perturb*   CLOUD BASE MASS FLUX FROM STOCHASTIC SCHEME   KG/(M2*S)
-!    *mf_num*       NUMBER OF SHALLOW CLOUDS STOCHASTIC SCHEME    1
-
-
-!     EXTERNALS.
-!     ----------
-
-!       CUINI:  INITIALIZES VALUES AT VERTICAL GRID USED IN CU-PARAMETR.
-!       CUBASE: CLOUD BASE CALCULATION FOR PENETR.AND SHALLOW CONVECTION
-!       CUASC:  CLOUD ASCENT FOR ENTRAINING PLUME
-!       CUDLFS: DETERMINES VALUES AT LFS FOR DOWNDRAFTS
-!       CUDDRAF:DOES MOIST DESCENT FOR CUMULUS DOWNDRAFTS
-!       CUFLX:  FINAL ADJUSTMENTS TO CONVECTIVE FLUXES (ALSO IN PBL)
-!       CUDQDT: UPDATES TENDENCIES FOR T AND Q
-!       CUDUDV: UPDATES TENDENCIES FOR U AND V
-
-!     SWITCHES.
-!     --------
-
-!          LMFPEN=.TRUE.   PENETRATIVE CONVECTION IS SWITCHED ON
-!          LMFSCV=.TRUE.   SHALLOW CONVECTION IS SWITCHED ON
-!          LMFMID=.TRUE.   MIDLEVEL CONVECTION IS SWITCHED ON
-!          LMFIT=.TRUE.    UPDRAUGHT ITERATION
-!          LMFDD=.TRUE.    CUMULUS DOWNDRAFTS SWITCHED ON
-!          LMFDUDV=.TRUE.  CUMULUS FRICTION SWITCHED ON
-!          LMFTRAC=.false. TRACER TRANSPORT
-
-!     MODEL PARAMETERS (DEFINED IN SUBROUTINE CUPARAM)
-!     ------------------------------------------------
-!     ENTRDD     ENTRAINMENT RATE FOR CUMULUS DOWNDRAFTS
-!     RMFCMAX    MAXIMUM MASSFLUX VALUE ALLOWED FOR
-!     RMFCMIN    MINIMUM MASSFLUX VALUE (FOR SAFETY)
-!     RMFDEPS    FRACTIONAL MASSFLUX FOR DOWNDRAFTS AT LFS
-!     RPRCON     COEFFICIENT FOR CONVERSION FROM CLOUD WATER TO RAIN
-
-!     REFERENCE.
-!     ----------
-
-!          PAPER ON MASSFLUX SCHEME (TIEDTKE,1989)
-!          DRAFT PAPER ON MASSFLUX SCHEME (NORDENG, 1995)
-!          Bechtold et al. (2008 QJRMS 134,1337-1351), Rooy et al. (2012 QJRMS)
-!          Bechtold et al. (2013 JAS)
-
-!     AUTHOR.
-!     -------
-!      M.TIEDTKE      E.C.M.W.F.     1986/1987/1989
 END DO
   end subroutine bechtold_alg
 end module bechtold_alg_mod

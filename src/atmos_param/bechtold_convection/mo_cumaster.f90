@@ -33,16 +33,13 @@ MODULE mo_cumaster
   USE mo_cuinit,      ONLY: cuinin, cubasen
   USE mo_cuascn,      ONLY: cuascn
   USE mo_cudescn,     ONLY: cudlfsn, cuddrafn
-  USE mo_cuflxtends,  ONLY: cuflxn, cudtdqn,cududv,cuctracer
-#ifdef __MSGWAM
-  USE mo_cuflxtends,  ONLY: compute_msgwam_heating
-#endif
+  USE mo_cuflxtends,  ONLY: cuflxn, cudtdqn,cududv
+
   USE mo_cucalclpi,   ONLY: cucalclpi, cucalcmlpi
   USE mo_cucalclfd,   ONLY: cucalclfd
   USE mo_nwp_parameters,  ONLY: t_phy_params
   USE mo_nwp_tuning_config, ONLY: tune_capdcfac_et, tune_capdcfac_tr, tune_lowcapefac, &
     &                             limit_negpblcape, tune_rcapqadv, tune_capethresh
-  USE mo_fortran_tools,   ONLY: t_ptr_tracer
   USE mo_exception,   ONLY: finish
   USE mo_stoch_sde,            ONLY: shallow_stoch_sde, shallow_stoch_sde_passive
   USE mo_stoch_explicit,       ONLY: shallow_stoch_explicit
@@ -56,13 +53,6 @@ MODULE mo_cumaster
 
   PUBLIC :: cumastrn
 
-#ifdef __MSGWAM
-  PUBLIC :: t_msgwam_fields
-  TYPE t_msgwam_fields
-    INTEGER, POINTER, CONTIGUOUS    :: ktype_cgw(:), kcbot_cgw(:), kctop_cgw(:)
-    REAL(JPRB), POINTER, CONTIGUOUS :: heat_cgw(:,:),tupd_cgw(:,:), test_cgw(:,:)
-  END TYPE t_msgwam_fields
-#endif
 
 CONTAINS
 
@@ -86,17 +76,8 @@ SUBROUTINE cumastrn &
  & ptu,      pqu,      plu,  pcore,              &
  & pmflxr,   pmflxs,   prain, pdtke_con,         &
  & pcape,    pvddraf,                            &
- & pcen, ptenrhoc,                               &
  & l_lpi, l_lfd, lpi, mlpi, koi, lfd, peis,      &
-#ifdef __MSGWAM
- & nsrc_cgw, msgwam_fields, lmsgwam,             &
-#endif
- & pertb,                                        &
- & lspinup, k650,k700, temp_s,                   &
- & cell_area,iseed,                              &
- & mf_bulk,mf_perturb,mf_num,p_cloud_ensemble,   &
- & pclnum_a, pclmf_a, pclnum_p, pclmf_p,         &
- & pclnum_d, pclmf_d, lacc                       )
+ & k650,k700,lacc                      )
 
 
 ! Code Description:
@@ -113,7 +94,6 @@ SUBROUTINE cumastrn &
 !    *KSTART*       FIRST STEP OF MODEL
 
 !    *k650*         LEVEL INDEX AT 650hPa
-!    *iseed*        SEED FOR RANDOM NUMBER GENERATOR
 
 !     INPUT PARAMETERS (LOGICAL)
 
@@ -132,7 +112,6 @@ SUBROUTINE cumastrn &
 !    *PQEN*         PROVISIONAL ENVIRONMENT SPEC. HUMIDITY (T+1)  KG/KG
 !    *PUEN*         PROVISIONAL ENVIRONMENT U-VELOCITY (T+1)       M/S
 !    *PVEN*         PROVISIONAL ENVIRONMENT V-VELOCITY (T+1)       M/S
-!    *PCEN*         PROVISIONAL ENVIRONMENT TRACER CONCENTRATIONS KG/KG
 !    *PLITOT*       GRID MEAN LIQUID WATER+ICE CONTENT            KG/KG
 !    *PVERVEL*      VERTICAL VELOCITY                             PA/S
 !    *PQSEN*        ENVIRONMENT SPEC. SATURATION HUMIDITY (T+1)   KG/KG
@@ -152,26 +131,12 @@ SUBROUTINE cumastrn &
 !
 !    *PTENTA*       TEMPERATURE TENDENCY DYNAMICS=TOT ADVECTION    K/S
 !    *PTENQA*       MOISTURE    TENDENCY DYNAMICS=TOT ADVECTION    1/S
-
-!    *temp_s*       TEMPERATURE IN LOWEST MODEL LEVEL                K
-!    *cell_area*    GRID CELL AREA                                  M2?
-!!!  FOR SPP
-!    *pertb*        STOCHASTIC PATTERN FOR PERTURBATION
-!!!  ALLOCATED ONLY IF lstoch_sde=.TRUE. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!    *pclnum_a*     ACTIVE CLOUD NUMBER (T)               M-2
-!    *pclmf_a*      ACTIVE MASS FLUX (T)                KG/(M2*S)
-!    *pclnum_p*     PASSIVE CLOUD NUMBER (T)              M-2
-!    *pclmf_p*      PASSIVE  MASS FLUX (T)              KG/(M2*S)
-
 !   !!!  ALLOCATED ONLY IF lstoch_deep=.TRUE. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!    *pclnum_d* PROGNOSTIC DEEP CLOUD NUMBER (T)               M-2
-!    *pclmf_d*  PROGNOSTIC DEEP MASS FLUX (T)                KG/(M2*S)
 
 !    *PTENT*        TEMPERATURE TENDENCY                           K/S
 !    *PTENQ*        MOISTURE TENDENCY                             KG/(KG S)
 !    *PTENU*        TENDENCY OF U-COMP. OF WIND                    M/S2
 !    *PTENV*        TENDENCY OF V-COMP. OF WIND                    M/S2
-!    *PTENRHOC*     TENDENCY OF CHEMICAL TRACERS                  KG/(M3*S)
 
 !    OUTPUT PARAMETERS (LOGICAL):
 
@@ -187,15 +152,6 @@ SUBROUTINE cumastrn &
 !    *KCBOT*        CLOUD BASE LEVEL
 !    *KCTOP*        CLOUD TOP LEVEL
 !    *KBOTSC*       CLOUD BASE LEVEL FOR SC-CLOUDS
-!!!  ALLOCATED ONLY IF lstoch_sde=.TRUE. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!    *pclnum_a*     PROGNOSTIC ACTIVE CLOUD NUMBER (T+1)               M-2
-!    *pclmf_a*      PROGNOSTIC ACTIVE MASS FLUX (T+1)                KG/(M2 S)
-!    *pclnum_p*     PROGNOSTIC PASSIVE CLOUD NUMBER (T+1)              M-2
-!    *pclmf_p*      PROGNOSTIC PASSIVE  MASS FLUX (T+1)              KG/(M2 S)
-!!!  ALLOCATED ONLY IF lstoch_deep=.TRUE. !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!    *pclnum_d*     PROGNOSTIC DEEP CLOUD NUMBER (T+1)                 M-2
-!    *pclmf_d*      PROGNOSTIC DEEP MASS FLUX (T+1)                  KG/(M2 S)
-
 !    OUTPUT PARAMETERS (REAL):
 
 !    *PTU*          TEMPERATURE IN UPDRAFTS                         K
@@ -225,9 +181,6 @@ SUBROUTINE cumastrn &
 !    *MLPI*         MODIFIED LPI USING KOI
 !    *KOI*          KONVEKTIONS INDEX                             K
 !    *LFD*          LIGHTNING FLASH DENSITY AS IN LOPEZ(2016)     1/(KM2*DAY)
-!    *mf_bulk*      CLOUD BASE MASS FLUX FROM T-B SCHEME          KG/(M2*S)
-!    *mf_perturb*   CLOUD BASE MASS FLUX FROM STOCHASTIC SCHEME   KG/(M2*S)
-!    *mf_num*       NUMBER OF SHALLOW CLOUDS STOCHASTIC SCHEME    1
 
 
 !     EXTERNALS.
@@ -353,9 +306,6 @@ REAL(KIND=jprb)   ,INTENT(in)    :: zdph(klon,klev)
 REAL(KIND=jprb)   ,INTENT(in)    :: pgeo(klon,klev)
 REAL(KIND=jprb)   ,INTENT(in)    :: pgeoh(klon,klev+1)
 REAL(KIND=jprb)   ,INTENT(in)    :: zdgeoh(klon,klev)
-REAL(KIND=jprb)   ,INTENT(in), POINTER :: pertb(:)
-TYPE(t_ptr_tracer),INTENT(in), POINTER :: pcen(:)
-TYPE(t_ptr_tracer),INTENT(inout), POINTER :: ptenrhoc(:)
 REAL(KIND=jprb)   ,INTENT(inout) :: ptent(klon,klev)
 REAL(KIND=jprb)   ,INTENT(inout) :: ptenq(klon,klev)
 REAL(KIND=vp)     ,INTENT(in)    :: ptenta(klon,klev)
@@ -390,29 +340,10 @@ REAL(KIND=jprb)   ,INTENT(inout) :: pmfude_rate(klon,klev)
 REAL(KIND=jprb)   ,INTENT(inout) :: pmfdde_rate(klon,klev)
 REAL(KIND=jprb)   ,INTENT(out)   :: pcape(klon)
 REAL(KIND=jprb)   ,INTENT(out)   :: pvddraf(klon)
-! Stochastic convection diagnostics
-REAL(KIND=jprb)   ,INTENT(out)   :: mf_bulk(:)
-REAL(KIND=jprb)   ,INTENT(out)   :: mf_perturb(:)
-REAL(KIND=jprb)   ,INTENT(out)   :: mf_num(:)
-! Stochastic convection switches
-LOGICAL           ,INTENT(in)    :: lspinup
+
 ! Variables needed to run stochastic convection
-REAL(KIND=jprb)   ,INTENT(in)    :: temp_s(klon)
 INTEGER(KIND=jpim),INTENT(in)    :: k650(klon)
 INTEGER(KIND=jpim),INTENT(in)    :: k700(klon)
-REAL(KIND=jprb)   ,INTENT(in)    :: cell_area(klon)
-INTEGER(KIND=JPIM),INTENT(in)    :: iseed(klon)
-
-! individual cloud's properties for explicit stochastic
-! cloud ensemble.
-TYPE(t_ptr_cloud_ensemble), INTENT(inout) :: p_cloud_ensemble
-
-REAL(KIND=jprb)   ,INTENT(inout)   :: pclnum_a(:)     ! prognostic active cloud number
-REAL(KIND=jprb)   ,INTENT(inout)   :: pclmf_a(:)      ! prognostic active mass flux
-REAL(KIND=jprb)   ,INTENT(inout)   :: pclnum_p(:)     ! prognostic passive cloud number
-REAL(KIND=jprb)   ,INTENT(inout)   :: pclmf_p(:)      ! prognostic passive mass flux
-REAL(KIND=jprb)   ,INTENT(inout)   :: pclnum_d(:)     ! prognostic deep cloud number
-REAL(KIND=jprb)   ,INTENT(inout)   :: pclmf_d(:)      ! prognostic deep mass flux
 
 LOGICAL           ,OPTIONAL, INTENT(in)      :: l_lpi
 LOGICAL           ,OPTIONAL, INTENT(in)      :: l_lfd
@@ -422,11 +353,7 @@ REAL(KIND=jprb)   ,OPTIONAL, INTENT(inout)   :: koi(:)
 REAL(KIND=jprb)   ,OPTIONAL, INTENT(inout)   :: lfd(:)
 REAL(KIND=jprb)            , INTENT(inout)   :: peis(:)
 LOGICAL                    , INTENT(in)      :: lacc
-#ifdef __MSGWAM
-INTEGER(KIND=jpim),INTENT(in)     :: nsrc_cgw
-TYPE(t_msgwam_fields), INTENT(in) :: msgwam_fields
-LOGICAL, INTENT(IN)               :: lmsgwam
-#endif
+
 
 !*UPG change to operations
 REAL(KIND=jprb) :: pwmean(klon)
@@ -510,11 +437,8 @@ LOGICAL, PARAMETER :: lpassive = .FALSE. !run stoch schemes in piggy-backing mod
 INTEGER(KIND=jpim) :: ktrac  ! number of chemical tracers
 
 REAL(KIND=jprb) :: msee(klon,klev)
-#ifdef __MSGWAM
-REAL(KIND=jprb) :: plude_expl(klon,klev)
-#endif
 
-LOGICAL :: lspp
+
 
 !#include "cuascn.intfb.h"
 !#include "cubasen.intfb.h"
@@ -572,22 +496,9 @@ zeps    = 0.0_JPRB
 zcaplim = MERGE(0.0_jprb, 0.05_jprb, phy_params%lgrayzone_deepconv)
 
 
-IF (ASSOCIATED(pcen) .AND. ASSOCIATED(ptenrhoc)) THEN
-  ktrac = SIZE(pcen)
-  !
-  ! sanity check
-  IF (SIZE(pcen) /= SIZE(ptenrhoc)) THEN
-    CALL finish('mo_cumaster:', 'Size of pcen and ptenrhoc does not match')
-  ENDIF
-ELSE
-  ktrac = 0
-ENDIF
+! Set number of tracers to zero to avoid implementing in Isca
+ktrac = 0
 
-IF (ASSOCIATED(pertb)) THEN
-  lspp = .true.
-ELSE
-  lspp = .false.
-ENDIF
 
 !---------------------------------------------------------------------
 !*UPG Change to operations call SATUR routine here
@@ -1159,7 +1070,6 @@ DO jl=kidia,kfdia
     ztau(jl)=MAX(720._jprb,ztau(jl))
     zmfub1(jl)=(zcape(jl)*zmfub(jl))/(zheat(jl)*ztau(jl))
     zmfub1(jl)=MAX(zmfub1(jl),0.001_jprb)
-    IF (lspp) zmfub1(jl)=zmfub1(jl)*(1.0_jprb+SIGN(1.0_jprb,pertb(jl))*MIN(0.5_jprb,ABS(pertb(jl))))
     zmfmax=(paph(jl,ikb)-paph(jl,ikb-1))*zcons2*rmflic+rmflia
     zmfub1(jl)=MIN(zmfub1(jl),zmfmax)
   ENDIF
@@ -1224,280 +1134,6 @@ ENDDO
 !$ACC END PARALLEL
 
 !!!BEGINNING OF STOCHASTIC ROUTINES
-
-IF (phy_params%lstoch_expl .or. phy_params%lstoch_sde .or. phy_params%lstoch_deep) THEN
-
-  ! Make sure zdhout is calculated - is required for stoch routines,
-  ! and may not have been calculated for points redefined from ktype
-  ! 1 to ktype 2
-  DO jl=kidia,kfdia
-    IF(ldcum(jl)) THEN
-      ! last check on convection type
-      ikb=kcbot(jl)
-      itopm2=kctop(jl)
-      zpbmpt=paph(jl,ikb)-paph(jl,itopm2)
-      ! In case m.s.e. difference between updraft and environment
-      ! was not calculated as part of the shallow closure,
-      ! calculate it here. Is required in shallow stochastic scheme.
-      ! This can be the case if Boeing or CAPE closures were used
-      ! instead of m.s.e. closure, e.g. because point was redefined
-      ! from deep to shallow, based on cloud depth.
-      IF (zdhout(jl).eq.0._JPRB) THEN
-        zdqmin=MAX(0.01_JPRB*zqenh(jl,ikb),1.e-10_JPRB)
-        zqumqe=pqu(jl,ikb)+plu(jl,ikb)-&
-              & zeps*zqd(jl,ikb)-(1.0_JPRB-zeps)*zqenh(jl,ikb)
-        zdh=rcpd*(ptu(jl,ikb)-zeps*ztd(jl,ikb)-&
-              & (1.0_JPRB-zeps)*ztenh(jl,ikb))+rlvtt*zqumqe
-        zdh=rg*MAX(zdh,1.e5_jprb*zdqmin)!
-        zdhout(jl) = zdh
-      ENDIF
-    ENDIF
-  ENDDO
-
-  ! Save mass flux calculated by convectional T-B scheme
-  ! into mf_bulk diagnostic, and initialise the stochastically
-  ! perturbed mass flux diagnostic mf_perturb.
-  ! This applies to both versions of the stochastic scheme
-  DO jl=kidia,kfdia
-    mf_bulk(jl) = zmfub1(jl)
-    mf_perturb(jl) = 0._JPRB
-  ENDDO
-ENDIF
-
-! Note the order of the routines! The following four calls cover
-! the options to run the shallow stochastic scheme explicitly or
-! as SDE, with or without "piggy-backing" mode enabled.
-! In piggy backing mode, it is crucial that the passive SDE routine
-! is called before the explicit routine such that it can act on the
-! convection state of the previous time step.
-
-
-IF( phy_params%lstoch_expl .and. lpassive ) THEN
-  ! Call SDE stochastic scheme (passively, in piggy-backing mode)
-  CALL shallow_stoch_sde_passive(                                  &
-&                         i_startidx   = kidia,                    & !IN
-&                         i_endidx     = kfdia,                    & !IN
-&                         klon         = klon,                     & !IN
-&                         klev         = klev,                     & !IN
-&                         ptsphy       = ptsphy,                   & !IN
-&                         pgeoh        = pgeoh,                    & !IN
-&                         mbas_con     = kcbot,                    & !IN
-&                         mfb          = zmfub1,                   & !IN
-&                         shfl         = pahfs(:,klev+1),          & !IN
-&                         lhfl         = pqhfl(:,klev+1)*rlvtt,    & !IN
-&                         temp_s       = temp_s,                   & !IN
-&                         dh           = zdhout,                   & !IN
-&                         ktype        = ktype,                    & !IN
-!&                         extra_3d     = extra_3d,                 & !INOUT
-&                         mfp          = pclmf_p,                  & !IN
-&                         mfa          = pclmf_a,                  & !IN
-&                         clnum_p      = pclnum_p,                 & !IN
-&                         clnum_a      = pclnum_a,                 & !IN
-&                         lseed        = iseed,                    & !IN
-&                         luse3d       = luse3d,                   & !IN
-&                         cell_area    = cell_area,                & !IN
-&                         lgrayzone    = phy_params%lgrayzone_deepconv)
-ENDIF
-
-IF( phy_params%lstoch_expl ) THEN
-  ! Call explicit stochastic scheme (interactively)
-  CALL  shallow_stoch_explicit(                                       &
-&                             i_startidx = kidia,                     & !IN
-&                             i_endidx   = kfdia,                     & !IN
-&                             klon       = klon,                      & !IN
-&                             klev       = klev,                      & !IN
-&                             dt         = ptsphy,                    & !IN
-&                             pgeoh      = pgeoh,                     & !IN
-&                             mbas_con   = kcbot,                     & !IN
-&                             mtop_con   = kctop,                     & !IN
-&                             mf_bulk    = zmfub1,                    & !IN
-&                             shfl       = shfl_s,                    & !IN
-&                             lhfl       = qhfl_s*rlvtt,              & !IN
-&                             temp_s     = temp_s,                    & !IN
-&                             mf_perturb = mf_perturb,                & !OUT
-&                             mfp        = pclmf_p,                   & !OUT
-&                             mfa        = pclmf_a,                   & !OUT
-&                             dh         = zdhout,                    & !IN
-&                             ktype      = ktype,                     & !IN
-&                             clnum      = mf_num,                    & !OUT
-&                             lseed      = iseed,                     & !IN
-&                             cell_area  = cell_area,                 & !IN
-&                             core       = pcore,                     & !OUT
-&                             deprof     = deprof,                    & !OUT
-!&                             extra_3d   = extra_3d,                  & !INOUT
-&                             ncloudspout= pclnum_p,                  & !OUT
-&                             ncloudsaout= pclnum_a,                  & !OUT
-&                             time_i     = p_cloud_ensemble%time_i,   & !INOUT
-&                             life_i     = p_cloud_ensemble%life_i,   & !INOUT
-&                             mf_i       = p_cloud_ensemble%mf_i,     & !INOUT
-&                             type_i     = p_cloud_ensemble%type_i,   & !INOUT
-&                             ktype_i    = p_cloud_ensemble%ktype_i,  & !INOUT
-&                             area_i     = p_cloud_ensemble%area_i,   & !INOUT
-&                             depth_i    = p_cloud_ensemble%depth_i,  & !INOUT
-&                             base_i     = p_cloud_ensemble%base_i,   & !INOUT
-&                             used_cell  = p_cloud_ensemble%used_cell,& !INOUT
-&                             lpassive   = .FALSE.,                   & !IN
-&                             luse3d     = luse3d,                    & !IN
-&                             lspinup    = lspinup,                   & !IN
-&                             lgrayzone  = phy_params%lgrayzone_deepconv)!IN
-
-  ! For low bulk MF, no cloud may be generated in the stochastic scheme,
-  ! leading to zero perturbed MF. Point should be switched off in this
-  ! case. Otherwise, overwrite "final" mass flux after closure from
-  ! conventional T-B scheme with stochastically perturbed value.
-  DO jl=kidia,kfdia
-    IF ((ktype(jl) .EQ. 2 .OR. (phy_params%lgrayzone_deepconv .and. (ktype(jl) .eq. 1))) &
-         & .AND. (mf_perturb(jl) .GT. 0._JPRB) ) THEN
-      zmfub1(jl) = mf_perturb(jl)
-    ELSE
-      zmfub1(jl) = 0._JPRB
-      ktype(jl)  = 0
-      ldcum(jl)  = .FALSE.
-      kcbot(jl)  = 0
-      kctop(jl)  = 0
-    ENDIF
-  ENDDO
-
-ENDIF !lstoch_expl
-
-IF( phy_params%lstoch_sde.and.lpassive ) THEN
-  ! Call explicit stochastic scheme (passively in piggy-backing mode)
-  CALL  shallow_stoch_explicit(                                       &
-&                             i_startidx = kidia,                     & !IN
-&                             i_endidx   = kfdia,                     & !IN
-&                             klon       = klon,                      & !IN
-&                             klev       = klev,                      & !IN
-&                             dt         = ptsphy,                    & !IN
-&                             pgeoh      = pgeoh,                     & !IN
-&                             mbas_con   = kcbot,                     & !IN
-&                             mtop_con   = kctop,                     & !IN
-&                             mf_bulk    = zmfub1,                    & !IN
-&                             shfl       = shfl_s,                    & !IN
-&                             lhfl       = qhfl_s*rlvtt,              & !IN
-&                             temp_s     = temp_s,                    & !IN
-&                             mf_perturb = mf_perturb,                & !OUT
-&                             mfp        = dummy_mfp,                 & !OUT
-&                             mfa        = dummy_mfa,                 & !OUT
-&                             dh         = zdhout,                    & !IN
-&                             ktype      = ktype,                     & !IN
-&                             clnum      = mf_num,                    & !OUT
-&                             lseed      = iseed,                     & !IN
-&                             cell_area  = cell_area,                 & !IN
-&                             core       = pcore,                     & !OUT
-&                             deprof     = deprof,                    & !OUT
-!&                             extra_3d   = extra_3d,                  & !INOUT
-&                             ncloudspout= dummy_clnum_p,             & !OUT
-&                             ncloudsaout= dummy_clnum_a,             & !OUT
-&                             time_i     = p_cloud_ensemble%time_i,   & !INOUT
-&                             life_i     = p_cloud_ensemble%life_i,   & !INOUT
-&                             mf_i       = p_cloud_ensemble%mf_i,     & !INOUT
-&                             type_i     = p_cloud_ensemble%type_i,   & !INOUT
-&                             ktype_i    = p_cloud_ensemble%ktype_i,  & !INOUT
-&                             area_i     = p_cloud_ensemble%area_i,   & !INOUT
-&                             depth_i    = p_cloud_ensemble%depth_i,  & !INOUT
-&                             base_i     = p_cloud_ensemble%base_i,   & !INOUT
-&                             used_cell  = p_cloud_ensemble%used_cell,& !INOUT
-&                             lpassive   = .TRUE.,                    & !IN
-&                             luse3d     = luse3d,                    & !IN
-&                             lspinup    = lspinup,                   & !IN
-&                             ncloudspin = pclnum_p,                  & !IN, OPT
-&                             ncloudsain = pclnum_a,                  & !IN, OPT
-&                             lgrayzone  = phy_params%lgrayzone_deepconv)!IN
-
-ENDIF
-
-IF(phy_params%lstoch_sde) THEN
-  ! Call SDE stochastic scheme (interactively)
-  CALL shallow_stoch_sde(                                          &
-&                         i_startidx   = kidia,                    & !IN
-&                         i_endidx     = kfdia,                    & !IN
-&                         klon         = klon,                     & !IN
-&                         klev         = klev,                     & !IN
-&                         ptsphy       = ptsphy,                   & !IN
-&                         pgeoh        = pgeoh,                    & !IN
-&                         mbas_con     = kcbot,                    & !IN
-&                         mfb          = zmfub1,                   & !IN
-&                         shfl         = pahfs(:,klev+1),          & !IN
-&                         lhfl         = pqhfl(:,klev+1)*rlvtt,    & !IN
-&                         temp_s       = temp_s,                   & !IN
-&                         mfp          = mf_perturb,               & !OUT
-&                         dh           = zdhout,                   & !IN
-&                         ktype        = ktype,                    & !IN
-&                         clnum        = mf_num,                   & !OUT
-&                         lseed        = iseed,                    & !IN
-&                         luse3d       = luse3d,                   & !IN
-&                         cell_area    = cell_area,                & !IN
-&                         pclnum_a     = pclnum_a,                 & !OUT
-&                         pclmf_a      = pclmf_a,                  & !OUT
-&                         pclnum_p     = pclnum_p,                 & !OUT
-&                         pclmf_p      = pclmf_p,                  & !OUT
-&                         lspinup      = lspinup,                  & !IN
-!&                         extra_3d     = extra_3d,                 & !INOUT
-&                         lgrayzone    = phy_params%lgrayzone_deepconv)
-
-  ! For low bulk MF, no cloud may be generated in the stochastic scheme,
-  ! leading to zero perturbed MF. Point should be switched off in this
-  ! case. Otherwise, overwrite "final" mass flux after closure from
-  ! conventional T-B scheme with stochastically perturbed value.
-  DO jl=kidia,kfdia
-     IF ((ktype(jl) .EQ. 2 .OR. (phy_params%lgrayzone_deepconv .and. (ktype(jl) .eq. 1))) &
-          & .AND. (mf_perturb(jl) .GT. 0._JPRB) ) THEN
-      zmfub1(jl) = mf_perturb(jl)
-    ELSE
-      zmfub1(jl) = 0._JPRB
-      ktype(jl)=0
-      ldcum(jl)=.FALSE.
-      kcbot(jl)=0
-      kctop(jl)=0
-    ENDIF
-  ENDDO
-ENDIF !lstoch_sde
-
-IF(phy_params%lstoch_deep) THEN
-  ! Call SDE stochastic scheme for deep convection. This should only be used
-  ! at appropriately coarse (global) resolution, and not be used in conjunction
-  ! with the shallow stochastic scheme. If resolution is coarse enough to
-  ! parameterise deep convection, the shallow scheme converges back to the
-  ! conventional T-B scheme, so there is no added benefit.
-  CALL deep_stoch_sde( &
-&                         i_startidx   = kidia,                    & !IN
-&                         i_endidx     = kfdia,                    & !IN
-&                         klon         = klon,                     & !IN
-&                         ptsphy       = ptsphy,                   & !IN
-&                         mfb          = zmfub1,                   & !IN
-&                         mfp          = mf_perturb,               & !OUT
-&                         ktype        = ktype,                    & !IN
-&                         clnum        = mf_num,                   & !OUT
-&                         lseed        = iseed,                    & !IN
-&                         luse3d       = luse3d,                   & !IN
-&                         cell_area    = cell_area,                & !IN
-&                         pclnum_d     = pclnum_d,                 & !OUT
-&                         pclmf_d      = pclmf_d                   ) !OUT
-!&                         pclmf_d      = pclmf_d,                  & !OUT
-!&                         extra_3d     = extra_3d)                   !INOUT
-
-  ! For low bulk MF, no cloud may be generated in the stochastic scheme,
-  ! leading to zero perturbed MF. Point should be switched off in this
-  ! case. Otherwise, overwrite "final" mass flux after closure from
-  ! conventional T-B scheme with stochastically perturbed value.
-  DO jl=kidia,kfdia
-    ! Only modify grid points with deep convection active
-    IF (ktype(jl) .EQ. 1) THEN
-      if (mf_perturb(jl) .gt. 0._JPRB) THEN
-        zmfub1(jl) = mf_perturb(jl)
-      ELSE
-        ! If stochastic scheme didn't generate clouds despite test parcel ascent
-        ! indicating deep convection, switch off point
-        zmfub1(jl) = 0._JPRB
-        ktype(jl)=0
-        ldcum(jl)=.FALSE.
-        kcbot(jl)=0
-        kctop(jl)=0
-      ENDIF
-    ENDIF
-  ENDDO
-ENDIF !lstoch_deep
-
 !!!END OF STOCHASTIC ROUTINES
 
 ! rescale DD fluxes if deep and shallow convection
@@ -1842,17 +1478,6 @@ DO jl=kidia,kfdia
   ENDIF
 ENDDO
 
-#ifdef __MSGWAM
-! To calculate our heating explicitly even if this cumulus scheme solves
-! it implicitly (rmfsoltq /= 0), 'plude' has to be saved here before it is
-! modified due to rmfsoltq /= 0.
-IF ( lmsgwam ) THEN
-  IF (nsrc_cgw > 0 .AND. rmfsoltq /= 0.0_JPRB) THEN
-    plude_expl(:,:) = plude(:,:)
-  END IF
-END IF
-#endif
-
 ! avoid negative humidities near cloud top because gradient of precip flux
 ! and detrainment / liquid water flux too large
 !$ACC LOOP SEQ
@@ -1899,23 +1524,8 @@ IF ( llconscheck ) THEN
     ENDDO
   ENDDO
 
-   IF ( lmftrac .AND. ktrac>0 ) THEN
-     ! this should only be possible, if PRESENT(ptenrhoc),
-     ! which is not the case for .NOT. lart, so this kernel is not ported to GPU
-     ALLOCATE(ztenrhoc(klon,klev,ktrac))
-     ALLOCATE(zsumc(klon,4+ktrac))
-     DO jn=1,ktrac
-       DO jk=ktdia+1,klev
-         DO jl=kidia,kfdia
-           IF ( ldcum(jl) ) THEN
-             ztenrhoc(jl,jk,jn)=ptenrhoc(jn)%ptr(jl,jk)
-           ENDIF
-         ENDDO
-       ENDDO
-     ENDDO
-   ELSE
-     ALLOCATE(zsumc(klon,4))
-   ENDIF
+
+  ALLOCATE(zsumc(klon,4))
 ENDIF
 !*UPG change to operations
 #endif
@@ -1934,20 +1544,6 @@ DO jk=ktdia+1,klev
     ENDIF
   ENDDO
 ENDDO
-
-#ifdef __MSGWAM
-IF ( lmsgwam ) &
-CALL compute_msgwam_heating( &
-  & nsrc_cgw, rmfsoltq, kidia, kfdia, ktdia, klev, itopm2,  &
-  & msgwam_fields%heat_cgw, msgwam_fields%tupd_cgw, msgwam_fields%test_cgw,                          &
-  & msgwam_fields%ktype_cgw, msgwam_fields%kctop_cgw, msgwam_fields%kcbot_cgw,                       &
-  & plude_expl, plude, zmfdq, llddraf, idtop,              &
-  & ldcum, kctop, kcbot, paph, pten,                       &
-  & ptu, zmful, zdmfup, psnde, zlglac, zdpmel,             &
-  & zmfus, zmfds, zmfuq,                           &
-  & rlmlt, rg, ptsphy,ktype,pqen)
-#endif
-
 !----------------------------------------------------------------------
 
 !*    8.0          UPDATE TENDENCIES FOR T AND Q IN SUBROUTINE CUDTDQ
@@ -2357,16 +1953,16 @@ IF ( lmftrac .AND. ktrac>0 ) THEN
   ENDIF
 
   !$ACC END PARALLEL
-
-  IF ( ktrac > 0 ) THEN
-    CALL cuctracer &
-      & ( kidia,    kfdia,    klon,  ktdia,  klev,     ktrac,&
-      &   kctop,     idtop,&
-      & lldcum,   llddraf3,  ptsphy,  &
-      & paph,     zdph,     zdgeoh,          &
-      & zmfuus,   zmfdus,   zmfudr,   zmfddr,&
-      & pcen,     ptenrhoc, lacc = .TRUE. )
-  ENDIF
+  !
+  ! IF ( ktrac > 0 ) THEN
+  !   CALL cuctracer &
+  !     & ( kidia,    kfdia,    klon,  ktdia,  klev,     ktrac,&
+  !     &   kctop,     idtop,&
+  !     & lldcum,   llddraf3,  ptsphy,  &
+  !     & paph,     zdph,     zdgeoh,          &
+  !     & zmfuus,   zmfdus,   zmfudr,   zmfddr,&
+  !     &     ptenrhoc, lacc = .TRUE. )
+  ! ENDIF
 ENDIF
 
 !----------------------------------------------------------------------
@@ -2418,20 +2014,7 @@ IF ( llconscheck ) THEN
       ENDIF
     ENDDO
   ENDDO
-  IF ( lmftrac .AND. ktrac>0 ) THEN
-    DO jn=1,ktrac
-      DO jk=klev,ktdia+1,-1
-        DO jl=kidia,kfdia
-          IF ( ldcum(jl) .AND. jk>=kctop(jl)-1) THEN
-       !DR     zdz=(paph(jl,jk+1)-paph(jl,jk))/rg
-       !DR     zsumc(jl,4+jn)=zsumc(jl,4+jn)+(ptenc(jl,jk,jn)-ztenc(jl,jk,jn))*zdz
-            zdz=zdgeoh(jl,jk)/rg  ! dz
-            zsumc(jl,4+jn)=zsumc(jl,4+jn)+(ptenrhoc(jn)%ptr(jl,jk)-ztenrhoc(jl,jk,jn))*zdz
-          ENDIF
-        ENDDO
-      ENDDO
-    ENDDO
-  ENDIF
+
 
   DO jl=kidia,kfdia
     IF ( ldcum(jl) ) THEN
