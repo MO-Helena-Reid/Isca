@@ -286,10 +286,16 @@ integer ::           &
      id_diff_dt_tg,  &   ! temperature tendency from vertical diffusion
      id_diff_dt_qg,  &   ! moisture tendency from vertical diffusion
      id_conv_rain,   &   ! rain from convection
+     id_conv_ras_rain,   &   ! rain from RAS convection scheme
+     id_conv_sbm_rain,   &   ! rain from SBM convection scheme
      id_cond_rain,   &   ! rain from condensation
      id_precip,      &   ! rain and snow from condensation and convection
      id_conv_dt_tg,  &   ! temperature tendency from convection
      id_conv_dt_qg,  &   ! temperature tendency from convection
+     id_conv_ras_dt_tg,  &   ! temperature tendency from ras convection
+     id_conv_ras_dt_qg,  &   ! temperature tendency from ras convection
+     id_conv_sbm_dt_tg,  &   ! temperature tendency from sbm convection
+     id_conv_sbm_dt_qg,  &   ! temperature tendency from sbm convection
      id_cond_dt_tg,  &   ! temperature tendency from condensation
      id_cond_dt_qg,  &   ! temperature tendency from condensation
      id_bucket_depth,      &   ! bucket depth variable for output
@@ -838,6 +844,18 @@ end select
         axes(1:2), Time, 'Rain from convection','kg/m/m/s')
 !endif
 
+id_conv_sbm_dt_qg = register_diag_field(mod_name, 'dt_qg_sbm_convection',          &
+    axes(1:3), Time, 'Moisture tendency from sbm convection','kg/kg/s')
+id_conv_sbm_dt_tg = register_diag_field(mod_name, 'dt_tg_sbm_convection',          &
+    axes(1:3), Time, 'Temperature tendency from sbm convection','K/s')
+id_conv_sbm_rain = register_diag_field(mod_name, 'sbm_convection_rain',            &
+    axes(1:2), Time, 'Rain from sbm convection','kg/m/m/s')
+id_conv_ras_dt_qg = register_diag_field(mod_name, 'dt_qg_ras_convection',          &
+    axes(1:3), Time, 'Moisture tendency from RAS convection','kg/kg/s')
+id_conv_ras_dt_tg = register_diag_field(mod_name, 'dt_tg_ras_convection',          &
+    axes(1:3), Time, 'Temperature tendency from RAS convection','K/s')
+id_conv_ras_rain = register_diag_field(mod_name, 'ras_convection_rain',            &
+    axes(1:2), Time, 'Rain from RAS convection','kg/m/m/s')
 if(two_stream_gray) call two_stream_gray_rad_init(is, ie, js, je, num_levels, get_axis_id(), Time, rad_lonb_2d, rad_latb_2d, dt_real)
 
 #ifdef RRTM_NO_COMPILE
@@ -990,6 +1008,12 @@ case(SIMPLE_BETTS_CONV)
    if(id_cape  > 0) used = send_data(id_cape, cape, Time)
    if(id_cin  > 0) used = send_data(id_cin, cin, Time)
 
+   ! TERACOTA separate diagnostics per convection scheme
+   if(id_conv_sbm_rain > 0) used = send_data(id_conv_sbm_rain, precip, Time)
+   if(id_conv_sbm_dt_qg > 0) used = send_data(id_conv_sbm_dt_qg, conv_dt_qg, Time)
+   if(id_conv_sbm_dt_tg > 0) used = send_data(id_conv_sbm_dt_tg, conv_dt_tg, Time)
+
+
 case(FULL_BETTS_MILLER_CONV)
 
    call betts_miller (          delta_t,           tg(:,:,:,previous),       &
@@ -1059,7 +1083,10 @@ case(RAS_CONV)
    if(id_conv_dt_qg > 0) used = send_data(id_conv_dt_qg, conv_dt_qg, Time)
    if(id_conv_dt_tg > 0) used = send_data(id_conv_dt_tg, conv_dt_tg, Time)
    if(id_conv_rain  > 0) used = send_data(id_conv_rain, precip, Time)
-
+   ! TERACOTA separate diagnostics per convection scheme
+   if(id_conv_ras_rain > 0) used = send_data(id_conv_ras_rain, precip, Time)
+   if(id_conv_ras_dt_qg > 0) used = send_data(id_conv_ras_dt_qg, conv_dt_qg, Time)
+   if(id_conv_ras_dt_tg > 0) used = send_data(id_conv_ras_dt_tg, conv_dt_tg, Time)
 
 case(NO_CONV)
    conv_dt_tg = 0.0
