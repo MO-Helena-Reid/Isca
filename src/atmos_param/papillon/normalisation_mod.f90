@@ -46,7 +46,7 @@ subroutine normalise_thetasdsof1_inputs(inputs, outputs)
     outputs(151) = inputs(151) ! lsm
     call normalise_orography(inputs(152), outputs(152)) ! orog
     call normalise_orography(inputs(153), outputs(153)) ! std orog
-end subroutine normalise_inputs
+end subroutine normalise_thetasdsof1_inputs
 
 
 subroutine normalise_temperature(input, output)
