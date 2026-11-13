@@ -141,14 +141,14 @@ subroutine papillon_alg(&
           q_papillon = spline_evaluate(z_papillon, spline)
           call spline_set_coeffs(z_full_r,t_r,size(t,3),spline)
           t_papillon = spline_evaluate(z_papillon, spline)
-          thetasdsof1_input(1:50)=q_papillon
-          thetasdsof1_input(51:100)=p_papillon
-          thetasdsof1_input(101:150)=t_papillon
+          thetasdsof1_input(1:50)=q_papillon(1:50)
+          thetasdsof1_input(51:100)=p_papillon(1:50)
+          thetasdsof1_input(101:150)=t_papillon(1:50)
           thetasdsof1_input(151) = fracland(i,j)
           thetasdsof1_input(152) = orog(i,j)
           ! TODO: actually pipe sd orog into this subroutine, setting to zero for now
           thetasdsof1_input(153) = 0.0
-          call normalise_thetasdsof1_inputs(thetasdsof1_input, thetasdsof1_normalised_inputs)
+          call normalise_thetasdsof1_inputs(thetasdsof1_input, thetasdsof1_normalised_input)
           call thetasdsof1(thetasdsof1_normalised_input, thetasdsof1_output)
           t_sd_papillon = 0.0
           t_sd_papillon(1:50) = thetasdsof1_output
