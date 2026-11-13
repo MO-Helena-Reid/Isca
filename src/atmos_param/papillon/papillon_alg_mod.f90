@@ -21,7 +21,7 @@ use papillon_config_mod, only: planet_radius, time_scale_factor, radius_scale_fa
   lat_scale_factor, lon_scale_factor, height_scale_factor, noise_scale_factor, noise_centre_t, noise_centre_x,&
   noise_centre_y, noise_centre_z, sampling_method_constant, sampling_method_development, sampling_method,&
   constant_t_sd_profile,output_papillon_diags,id_papillon_noise,id_papillon_t_sd,id_papillon_t_pert,&
-  sampling_method_thetasdof1
+  sampling_method_thetasdsof1
 use thetasds00v001_mod, only: thetasds00v001
 use thetasdsof1_mod, only: thetasdsof1
 use normalisation_mod, only: normalise_inputs, normalise_thetasdsof1_inputs
@@ -130,7 +130,7 @@ subroutine papillon_alg(&
             t_sd(i,j,:) = spline_evaluate(z_full_r,spline)
             call reverse(t_sd(i,j,:),t_sd(i,j,:))
           end if
-        case (sampling_method_thetasdof1)
+        case (sampling_method_thetasdsof1)
           call reverse(z_full(i,j,:),z_full_r)
           call reverse(pfull(i,j,:),pfull_r)
           call reverse(q(i,j,:),q_r)
