@@ -25,49 +25,38 @@ CONTAINS
     INTEGER, INTENT(in)                                   :: n_in, n_out
     REAL(kind = precision), DIMENSION(n_in),  INTENT(in)  :: x_in
     REAL(kind = precision), DIMENSION(n_out), INTENT(out) :: y_out
-    REAL(kind = precision), DIMENSION(n_in, n_out)        :: weights
-    REAL(kind = precision), DIMENSION(n_out)              :: biases
+    REAL(kind = precision), DIMENSION(n_in, n_out), INTENT(IN)  :: weights
+    REAL(kind = precision), DIMENSION(n_out), INTENT(IN)        :: biases
 
-    REAL(kind = precision)                                :: running_sum
     REAL(kind = precision)                                :: denominator, maxx
-    REAL(kind = precision), DIMENSION(n_out)              :: x
     REAL(kind = precision), INTENT(in)                    :: alpha
 
     CHARACTER (LEN=10)                                    :: activation
 
-    DO j=1,n_out
-       running_sum = 0.0
 
-       DO i=1,n_in
-          running_sum = running_sum + ( x_in(i) * weights(i,j) )
-
-       END DO
-       x(j) = running_sum + biases(j)
-
-    ENDDO
-
+    y_out = MATMUL(x_in, weights) + biases
     DO j=1,n_out
 
        SELECT CASE (activation)
        CASE ("relu      ")
-          y_out(j) = max(0.0,x(j))
+          y_out(j) = max(0.0,y_out(j))
        CASE ("linear    ")
-           y_out(j) = x(j)
+           y_out(j) = y_out(j)
        CASE ("leakyrelu ")
-          y_out(j) = max(alpha*x(j),x(j))
+          y_out(j) = max(alpha*y_out(j),y_out(j))
        CASE ("sigmoid   ")
-          y_out(j) = 1.0 / ( 1.0 + exp(-x(j)) )
+          y_out(j) = 1.0 / ( 1.0 + exp(-y_out(j)) )
        CASE ("tanh      ")
-          y_out(j) = tanh(x(j))
+          y_out(j) = tanh(y_out(j))
        CASE ("softmax   ")
 !       Here we compute the denominator as sum(exp(x-maxx))
 !        instead of sum(exp(x)) to avoid overflow.
         denominator = 0.0
-        maxx = MAXVAL(x)
-        denominator = SUM(EXP(x-maxx))
+        maxx = MAXVAL(y_out)
+        denominator = SUM(EXP(y_out-maxx))
 !         Here we compute the numerator with x-maxx,
 !          following the denominator calculation.
-          y_out(j) = exp(x(j) - maxx) / denominator
+          y_out(j) = exp(y_out(j) - maxx) / denominator
        CASE default
           PRINT*,'You have asked for an activation function that is not available.'
           PRINT*,'Please check your spelling or add it as an option.'
