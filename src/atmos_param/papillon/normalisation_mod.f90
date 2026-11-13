@@ -33,6 +33,22 @@ subroutine normalise_inputs(inputs, outputs)
     call normalise_orography(inputs(213), outputs(213)) ! std orog
 end subroutine normalise_inputs
 
+subroutine normalise_thetasdsof1_inputs(inputs, outputs)
+    implicit none
+    real(kind=r_ml), dimension(153), intent(in) :: inputs
+    real(kind=r_ml), dimension(153), intent(out) :: outputs
+    integer :: i
+    do i = 1, 50
+        call normalise_humidity(inputs(i), outputs(i)) ! q
+        call normalise_pressure(inputs(i + 50), outputs(i + 50)) ! P
+        call normalise_temperature(inputs(i + 100), outputs(i + 100)) ! T
+    end do
+    outputs(151) = inputs(151) ! lsm
+    call normalise_orography(inputs(152), outputs(152)) ! orog
+    call normalise_orography(inputs(153), outputs(153)) ! std orog
+end subroutine normalise_inputs
+
+
 subroutine normalise_temperature(input, output)
     implicit none
     real(kind=r_ml), intent(in) :: input

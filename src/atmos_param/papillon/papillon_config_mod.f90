@@ -37,7 +37,7 @@ private
 public :: sampling_method, sampling_method_correlated, &
     sampling_method_uncorrelated, &
     sampling_method_development, sampling_method_constant, &
-    constant_t_sd_profile, &
+    sampling_method_thetasdsof1, constant_t_sd_profile, &
     planet_radius, time_scale_factor, radius_scale_factor,&
     lat_scale_factor,lon_scale_factor,height_scale_factor,&
     noise_scale_factor,noise_centre_t,noise_centre_x,&
@@ -49,6 +49,7 @@ integer, parameter :: sampling_method_correlated = 4
 integer, parameter :: sampling_method_uncorrelated = 3
 integer, parameter :: sampling_method_development = 2
 integer, parameter :: sampling_method_constant = 1
+integer, parameter :: sampling_method_thetasdsof1 = 1
 integer            :: sampling_method = sampling_method_constant
 integer, parameter :: interpolation_method_cubic = 1
 integer, parameter :: interpolation_method_none  = 2
