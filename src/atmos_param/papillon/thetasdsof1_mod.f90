@@ -15,33 +15,34 @@ IMPLICIT NONE
 CONTAINS
 SUBROUTINE thetasdsof1(inputs, y_stddevs)
 USE neural_net_mod, ONLY: dense
+USE ml_constants_mod, ONLY: r_ml
 IMPLICIT NONE
-REAL(KIND=4) :: inputs(153)
+REAL(KIND=r_ml) :: inputs(153)
 
 
-REAL(KIND=4) :: w_keras_tensor(153, 256)
-REAL(KIND=4) :: b_keras_tensor(256)
-REAL(KIND=4) :: y_keras_tensor(256)
+REAL(KIND=r_ml) :: w_keras_tensor(153, 256)
+REAL(KIND=r_ml) :: b_keras_tensor(256)
+REAL(KIND=r_ml) :: y_keras_tensor(256)
 
 
-REAL(KIND=4) :: w_keras_tensor_1(256, 256)
-REAL(KIND=4) :: b_keras_tensor_1(256)
-REAL(KIND=4) :: y_keras_tensor_1(256)
+REAL(KIND=r_ml) :: w_keras_tensor_1(256, 256)
+REAL(KIND=r_ml) :: b_keras_tensor_1(256)
+REAL(KIND=r_ml) :: y_keras_tensor_1(256)
 
 
-REAL(KIND=4) :: w_keras_tensor_2(256, 256)
-REAL(KIND=4) :: b_keras_tensor_2(256)
-REAL(KIND=4) :: y_keras_tensor_2(256)
+REAL(KIND=r_ml) :: w_keras_tensor_2(256, 256)
+REAL(KIND=r_ml) :: b_keras_tensor_2(256)
+REAL(KIND=r_ml) :: y_keras_tensor_2(256)
 
 
-REAL(KIND=4) :: w_keras_tensor_3(256, 256)
-REAL(KIND=4) :: b_keras_tensor_3(256)
-REAL(KIND=4) :: y_keras_tensor_3(256)
+REAL(KIND=r_ml) :: w_keras_tensor_3(256, 256)
+REAL(KIND=r_ml) :: b_keras_tensor_3(256)
+REAL(KIND=r_ml) :: y_keras_tensor_3(256)
 
 
-REAL(KIND=4) :: w_keras_tensor_4(256, 50)
-REAL(KIND=4) :: b_keras_tensor_4(50)
-REAL(KIND=4) :: y_stddevs(50)
+REAL(KIND=r_ml) :: w_keras_tensor_4(256, 50)
+REAL(KIND=r_ml) :: b_keras_tensor_4(50)
+REAL(KIND=r_ml) :: y_stddevs(50)
 
 
 
