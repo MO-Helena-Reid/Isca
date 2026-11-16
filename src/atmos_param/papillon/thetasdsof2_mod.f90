@@ -1,13 +1,3 @@
-!!-----------------------------------------------------------------------------
-! Crown Copyright (c) Met Office. All rights reserved.
-! The file LICENCE, distributed with this code, contains details of the terms
-! under which the code may be used.
-!-----------------------------------------------------------------------------
-! This file was generated automatically by ENNUF,
-! a tool for translating machine learning models written in python
-! to Fortran, initially developed at the UK Met Office and available
-! here: https://github.com/MetOffice/ennuf
-!
 
 !  ! Easy Neural Networks in the Um in Fortran: Theta Standard Deviations 2
 MODULE thetasdsof2_mod
@@ -9249,19 +9239,19 @@ DATA w_keras_tensor_4(64, :) / -0.04470352828502655, -0.04269867017865181, &
 
 
 CALL dense(inputs, y_keras_tensor, 153, 64, w_keras_tensor, b_keras_tensor, &
-'linear    ' , 0.0)
+'relu      ' , 0.0)
 
 CALL dense(y_keras_tensor, y_keras_tensor_1, 64, 64, w_keras_tensor_1, &
-b_keras_tensor_1, 'linear    ' , 0.0)
+b_keras_tensor_1, 'relu      ' , 0.0)
 
 CALL dense(y_keras_tensor_1, y_keras_tensor_2, 64, 64, w_keras_tensor_2, &
-b_keras_tensor_2, 'linear    ' , 0.0)
+b_keras_tensor_2, 'relu      ' , 0.0)
 
 CALL dense(y_keras_tensor_2, y_keras_tensor_3, 64, 64, w_keras_tensor_3, &
-b_keras_tensor_3, 'linear    ' , 0.0)
+b_keras_tensor_3, 'relu      ' , 0.0)
 
 CALL dense(y_keras_tensor_3, y_stddevs, 64, 50, w_keras_tensor_4, &
-b_keras_tensor_4, 'linear    ' , 0.0)
+b_keras_tensor_4, 'relu      ' , 0.0)
 
 
 
