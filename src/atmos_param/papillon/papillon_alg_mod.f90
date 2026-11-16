@@ -21,9 +21,10 @@ use papillon_config_mod, only: planet_radius, time_scale_factor, radius_scale_fa
   lat_scale_factor, lon_scale_factor, height_scale_factor, noise_scale_factor, noise_centre_t, noise_centre_x,&
   noise_centre_y, noise_centre_z, sampling_method_constant, sampling_method_development, sampling_method,&
   constant_t_sd_profile,output_papillon_diags,id_papillon_noise,id_papillon_t_sd,id_papillon_t_pert,&
-  sampling_method_thetasdsof1
+  sampling_method_thetasdsof1, sampling_method_thetasdsof2
 use thetasds00v001_mod, only: thetasds00v001
 use thetasdsof1_mod, only: thetasdsof1
+use thetasdsof2_mod, only: thetasdsof2
 use normalisation_mod, only: normalise_inputs, normalise_thetasdsof1_inputs
 use sample_multivariate_normal_mod, only: sample_from_snoise
 implicit none
@@ -153,7 +154,29 @@ subroutine papillon_alg(&
           t_sd_papillon = 0.0
           t_sd_papillon(1:50) = thetasdsof1_output
           call sample_from_snoise(noise_scale_factor*noise_papillon, t_sd_papillon, tpert_papillon)
-
+        case (sampling_method_thetasdsof2)
+          call reverse(z_full(i,j,:),z_full_r)
+          call reverse(pfull(i,j,:),pfull_r)
+          call reverse(q(i,j,:),q_r)
+          call reverse(t(i,j,:),t_r)
+          call spline_set_coeffs(z_full_r,pfull_r,size(t,3),spline)
+          p_papillon = spline_evaluate(z_papillon, spline)
+          call spline_set_coeffs(z_full_r,q_r,size(t,3),spline)
+          q_papillon = spline_evaluate(z_papillon, spline)
+          call spline_set_coeffs(z_full_r,t_r,size(t,3),spline)
+          t_papillon = spline_evaluate(z_papillon, spline)
+          thetasdsof1_input(1:50)=q_papillon(1:50)
+          thetasdsof1_input(51:100)=p_papillon(1:50)
+          thetasdsof1_input(101:150)=t_papillon(1:50)
+          thetasdsof1_input(151) = fracland(i,j)
+          thetasdsof1_input(152) = orog(i,j)
+          ! TODO: actually pipe sd orog into this subroutine, setting to zero for now
+          thetasdsof1_input(153) = 0.0
+          call normalise_thetasdsof1_inputs(thetasdsof1_input, thetasdsof1_normalised_input)
+          call thetasdsof2(thetasdsof1_normalised_input, thetasdsof1_output)
+          t_sd_papillon = 0.0
+          t_sd_papillon(1:50) = thetasdsof1_output
+          call sample_from_snoise(noise_scale_factor*noise_papillon, t_sd_papillon, tpert_papillon)
       end select
       !print*,GETPID(),"shape z zr zp t tp tpp",size(z_full(i,j,:)),size(z_full_r),size(z_papillon),size(t_r),size(t_papillon),size(tpert_papillon),"z_full_r",z_full_r,"t_papillon:",t_papillon,"temperature:",t_r,"t+tpert_papillon:",tpert_papillon
     
