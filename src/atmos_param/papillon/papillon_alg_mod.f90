@@ -126,11 +126,6 @@ subroutine papillon_alg(&
           call thetasds00v001(normalised_inputs, t_sd_papillon)
           call sample_from_snoise(noise_scale_factor*noise_papillon, t_sd_papillon, tpert_papillon)
 
-          if (id_papillon_t_sd > 0) then
-            call spline_set_coeffs(z_papillon, t_sd_papillon, ml_nlev, spline)
-            t_sd(i,j,:) = spline_evaluate(z_full_r,spline)
-            call reverse(t_sd(i,j,:),t_sd(i,j,:))
-          end if
         case (sampling_method_thetasdsof1)
           call reverse(z_full(i,j,:),z_full_r)
           call reverse(pfull(i,j,:),pfull_r)
@@ -178,6 +173,12 @@ subroutine papillon_alg(&
           t_sd_papillon(1:50) = thetasdsof1_output
           call sample_from_snoise(noise_scale_factor*noise_papillon, t_sd_papillon, tpert_papillon)
       end select
+      if (id_papillon_t_sd > 0) then
+        call spline_set_coeffs(z_papillon, t_sd_papillon, ml_nlev, spline)
+        t_sd(i,j,:) = spline_evaluate(z_full_r,spline)
+        call reverse(t_sd(i,j,:),t_sd(i,j,:))
+      end if
+
       !print*,GETPID(),"shape z zr zp t tp tpp",size(z_full(i,j,:)),size(z_full_r),size(z_papillon),size(t_r),size(t_papillon),size(tpert_papillon),"z_full_r",z_full_r,"t_papillon:",t_papillon,"temperature:",t_r,"t+tpert_papillon:",tpert_papillon
     
       !  print*, GETPID(), "get_alternative_temperature done"
